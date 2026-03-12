@@ -172,37 +172,39 @@ export default function AdminPage() {
                 </div>
 
                 <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring">
-                  <div className="min-w-[640px]">
+                  <div className="min-w-[680px]">
                     <div className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Status</div>
                       <div>Directs</div>
                       <div>Level</div>
                     </div>
-                    <div className="divide-y divide-[color:var(--ring)]">
-                      {users.map((u) => (
-                        <div key={u.id} className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 px-4 py-4 text-sm">
-                          <div>
-                            <div className="font-medium text-foreground">{u.name}</div>
-                            <div className="text-xs text-subtext">{u.id}</div>
+                    <div className="max-h-[360px] overflow-y-auto">
+                      <div className="divide-y divide-[color:var(--ring)]">
+                        {users.map((u) => (
+                          <div key={u.id} className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 px-4 py-4 text-sm">
+                            <div>
+                              <div className="font-medium text-foreground">{u.name}</div>
+                              <div className="text-xs text-subtext">{u.id}</div>
+                            </div>
+                            <div className="flex items-center">
+                              <span
+                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
+                                  u.status === "Active"
+                                    ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                    : u.status === "Pending"
+                                      ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
+                                      : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
+                                }`}
+                              >
+                                {u.status}
+                              </span>
+                            </div>
+                            <div className="text-subtext">{u.directs}/2</div>
+                            <div className="text-subtext">L{u.level}</div>
                           </div>
-                          <div className="flex items-center">
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
-                                u.status === "Active"
-                                  ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
-                                  : u.status === "Pending"
-                                    ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
-                                    : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
-                              }`}
-                            >
-                              {u.status}
-                            </span>
-                          </div>
-                          <div className="text-subtext">{u.directs}/2</div>
-                          <div className="text-subtext">L{u.level}</div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
