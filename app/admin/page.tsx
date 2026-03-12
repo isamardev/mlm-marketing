@@ -117,7 +117,7 @@ export default function AdminPage() {
           </aside>
 
           <main className="space-y-6">
-            <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+            <div className="w-full max-w-full rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="text-sm text-subtext">Overview</div>
@@ -151,7 +151,7 @@ export default function AdminPage() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
-              <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+              <div className="w-full max-w-full rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">Users</div>
@@ -171,7 +171,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 rounded-2xl ring-1 ring-ring overflow-x-auto sm:overflow-visible">
+                <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring sm:overflow-visible">
                   <div className="min-w-[680px] sm:min-w-0">
                     <div className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 bg-muted px-3 sm:px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
@@ -210,7 +210,7 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+              <div className="w-full max-w-full rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
                 <div className="text-sm font-semibold">Recent Activity</div>
                 <div className="mt-1 text-sm text-subtext">System events (preview)</div>
                 <div className="mt-6 grid gap-3">
@@ -224,7 +224,7 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                <div className="mt-6 rounded-2xl bg-muted p-5 ring-1 ring-ring">
+                <div className="mt-6 w-full max-w-full rounded-2xl bg-muted p-5 ring-1 ring-ring">
                   <div className="text-sm font-semibold">Level Configuration</div>
                   <div className="mt-2 text-sm text-subtext">Current: 20 levels · Direct limit: 2</div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
