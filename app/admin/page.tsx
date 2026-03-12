@@ -171,15 +171,15 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring">
-                  <div className="min-w-[680px]">
+                <div className="mt-6 rounded-2xl ring-1 ring-ring overflow-x-auto sm:overflow-visible">
+                  <div className="min-w-[680px] sm:min-w-0">
                     <div className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Status</div>
                       <div>Directs</div>
                       <div>Level</div>
                     </div>
-                    <div className="max-h-[360px] overflow-y-auto">
+                    <div className="max-h-[360px] overflow-y-auto sm:max-h-none sm:overflow-y-visible">
                       <div className="divide-y divide-[color:var(--ring)]">
                         {users.map((u) => (
                           <div key={u.id} className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 px-4 py-4 text-sm">
