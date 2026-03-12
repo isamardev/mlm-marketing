@@ -24,7 +24,7 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
+    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-sm ring-1 ring-ring">
       <div className="text-xs text-subtext">{label}</div>
       <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
       {hint ? <div className="mt-2 text-sm text-subtext">{hint}</div> : null}
@@ -129,13 +129,13 @@ export default function AdminPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted w-full sm:w-auto"
                   >
                     Export
                   </button>
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
                   >
                     Create Payout Batch
                   </button>
@@ -157,9 +157,9 @@ export default function AdminPage() {
                     <div className="text-sm font-semibold">Users</div>
                     <div className="mt-1 text-sm text-subtext">Latest accounts and status</div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <input
-                      className="h-10 w-40 rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      className="h-10 w-full sm:w-40 rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                       placeholder="Search"
                     />
                     <button
@@ -173,7 +173,7 @@ export default function AdminPage() {
 
                 <div className="mt-6 rounded-2xl ring-1 ring-ring overflow-x-auto sm:overflow-visible">
                   <div className="min-w-[680px] sm:min-w-0">
-                    <div className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                    <div className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 bg-muted px-3 sm:px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Status</div>
                       <div>Directs</div>
@@ -182,7 +182,7 @@ export default function AdminPage() {
                     <div className="max-h-[360px] overflow-y-auto sm:max-h-none sm:overflow-y-visible">
                       <div className="divide-y divide-[color:var(--ring)]">
                         {users.map((u) => (
-                          <div key={u.id} className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 px-4 py-4 text-sm">
+                          <div key={u.id} className="grid grid-cols-[1.1fr_0.8fr_0.8fr_0.6fr] gap-2 px-3 sm:px-4 py-4 text-sm">
                             <div>
                               <div className="font-medium text-foreground">{u.name}</div>
                               <div className="text-xs text-subtext">{u.id}</div>
@@ -215,7 +215,7 @@ export default function AdminPage() {
                 <div className="mt-1 text-sm text-subtext">System events (preview)</div>
                 <div className="mt-6 grid gap-3">
                   {activity.map((a, i) => (
-                    <div key={i} className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
+                    <div key={i} className="rounded-2xl bg-muted p-3 sm:p-4 ring-1 ring-ring">
                       <div className="flex items-start justify-between gap-4">
                         <div className="text-sm text-foreground">{a.text}</div>
                         <div className="text-xs text-subtext">{a.time}</div>
@@ -230,13 +230,13 @@ export default function AdminPage() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button
                       type="button"
-                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-background"
+                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-background w-full"
                     >
                       Edit Levels
                     </button>
                     <button
                       type="button"
-                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
                     >
                       Save Changes
                     </button>
