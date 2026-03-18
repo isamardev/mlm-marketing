@@ -27,6 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <meta name="cryptomus" content="f0cbf466" />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
