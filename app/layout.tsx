@@ -7,6 +7,14 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+export const metadata = {
+  title: "Your Site",
+  description: "Your description",
+  other: {
+    cryptomus: "f0cbf466",
+  },
+};
+
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
