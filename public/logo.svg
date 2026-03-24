@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="64" viewBox="0 0 256 64">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00c9ff"/>
+      <stop offset="100%" stop-color="#00ffd1"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0af"/>
+      <stop offset="100%" stop-color="#08cfae"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="64" rx="12" fill="none"/>
+  <g transform="translate(10,10)">
+    <g transform="translate(0,0)">
+      <path d="M22 6c-7 0-12 5-12 12v6a2 2 0 0 0 4 0v-6c0-4.4 3.6-8 8-8s8 3.6 8 8v6a2 2 0 0 0 4 0v-6c0-7-5-12-12-12z" fill="url(#g1)"/>
+      <circle cx="12" cy="34" r="3.5" fill="#00ffd1"/>
+      <circle cx="30" cy="34" r="3.5" fill="#00c9ff"/>
+      <rect x="18" y="30" width="6" height="3" rx="1.5" fill="url(#g2)"/>
+    </g>
+    <g transform="translate(44,6)">
+      <text x="0" y="16" font-family="Segoe UI, Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="url(#g1)">Digital Community</text>
+      <text x="0" y="36" font-family="Segoe UI, Roboto, Arial, sans-serif" font-size="16" font-weight="800" fill="#eaf6ff">MAGNET</text>
+    </g>
+  </g>
+</svg>

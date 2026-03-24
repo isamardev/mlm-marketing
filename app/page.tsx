@@ -1,13 +1,35 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FaUser } from "react-icons/fa";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "react-toastify";
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const [level, setLevel] = useState<number>(3);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("login");
   const [authMessage, setAuthMessage] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [signupStep, setSignupStep] = useState<"form" | "otp">("form");
+  const [forgotStep, setForgotStep] = useState<"email" | "otp" | "reset">("email");
+  const [forgotDevOtp, setForgotDevOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [referrerCode, setReferrerCode] = useState("");
+  const [hasRefParam, setHasRefParam] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [showGrid, setShowGrid] = useState(false);
-  const maxLevel = 20;
+  const maxLevel = 33;
   const newAtLevel = (n: number) => Math.pow(2, n - 1);
   const totalAtLevel = (n: number) => Math.pow(2, n) - 1;
   const visibleNodes = useMemo(() => Math.min(totalAtLevel(level), 256), [level]);
@@ -21,20 +43,26 @@ export default function Home() {
     window.addEventListener("resize", set);
     return () => window.removeEventListener("resize", set);
   }, []);
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(""), 2200);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
   const maxColsByBreakpoint = vw >= 1536 ? 10 : vw >= 1280 ? 8 : vw >= 1024 ? 6 : vw >= 768 ? 4 : vw >= 640 ? 3 : 2;
   const gridColsResponsive = Math.min(maxColsByBreakpoint, Math.max(2, Math.floor(Math.sqrt(visibleNodes))));
   const testimonialsData = [
-    { initials: "AK", name: "Ali Khan", city: "Karachi", text: "UI simple aur fast hai. Binary preview se growth samajh aati hai." },
-    { initials: "MS", name: "Mehak Shah", city: "Lahore", text: "Light theme readable hai. Forms clean aur minimal hain." },
-    { initials: "HF", name: "Haris Farooq", city: "Islamabad", text: "Responsive grid acchi lagti hai; mobile par bhi smooth." },
+    { initials: "AK", name: "Ali Khan", city: "Karachi", text: "The UI is simple and fast. The binary preview explains growth clearly." },
+    { initials: "MS", name: "Mehak Shah", city: "Lahore", text: "Light theme is readable. Forms are clean and minimal." },
+    { initials: "HF", name: "Haris Farooq", city: "Islamabad", text: "Responsive grid looks great; smooth on mobile too." },
   ];
   const [tIndex, setTIndex] = useState(0);
   const faqsData = [
-    { q: "Binary structure kya hota hai?", a: "Har user 2 log add karta hai. Levels grow hotay hain: L1=1, L2=3, L3=7, waghera." },
-    { q: "Kitne levels tak expand hoga?", a: "UI 20 levels tak preview dikhata hai." },
-    { q: "Account kaise banega?", a: "Login/Sign Up button se modal khulta hai; form submit se account flow start hoga." },
-    { q: "Real payouts implement hain?", a: "Currently UI preview hai; payouts/APIs connect kar sakte hain next step me." },
-    { q: "Mobile par kaise dikhayega?", a: "Responsive grid use hoti hai; choti screens par fewer columns dikhte hain." },
+    { q: "What is a binary structure?", a: "Each user adds two members. Levels grow like: L1=1, L2=3, L3=7, and so on." },
+    { q: "How many levels are supported?", a: "The UI preview supports up to 33 levels." },
+    { q: "Do payouts cover all 33 levels?", a: "No. Payouts are limited to the first 20 levels. Levels beyond 20 are visual only." },
+    { q: "How do I create an account?", a: "Use the Login/Sign Up button; submit the form to start the flow." },
+    { q: "Are real payouts implemented?", a: "This is a UI preview; payouts/APIs can be connected next." },
+    { q: "How does it look on mobile?", a: "Responsive grid adapts; fewer columns show on smaller screens." },
   ];
   const [openFaqs, setOpenFaqs] = useState<number[]>([]);
   const toggleFaq = (i: number) =>
@@ -50,6 +78,14 @@ export default function Home() {
   }, [authOpen]);
 
   useEffect(() => {
+    const ref = (searchParams.get("ref") ?? "").trim();
+    setHasRefParam(!!ref);
+    if (ref) {
+      setReferrerCode(ref);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!authOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setAuthOpen(false);
@@ -61,12 +97,16 @@ export default function Home() {
   const openLogin = () => {
     setAuthMessage("");
     setAuthMode("login");
+    setSignupStep("form");
+    setOtpCode("");
     setAuthOpen(true);
   };
 
   const openSignup = () => {
     setAuthMessage("");
     setAuthMode("signup");
+    setSignupStep("form");
+    setOtpCode("");
     setAuthOpen(true);
   };
 
@@ -75,37 +115,49 @@ export default function Home() {
       <section className="relative isolate overflow-hidden">
         <div className="relative mx-auto max-w-7xl px-6 pt-12 pb-12 sm:pt-14 sm:pb-16">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur">
-              <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(255,106,0,0.35)]" />
-              <span className="text-xs tracking-wide text-accent">MLM Binary · 20 Levels</span>
+            <div className="flex items-center gap-3">
+              <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
+              <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur">
+                <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(0,201,255,0.35)]" />
+                <span className="text-xs tracking-wide text-accent">Connecting People & Ideas</span>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <a
-                href="/dashboard"
-                className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
-              >
-                User Panel
-              </a>
-              <a
-                href="/admin"
-                className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
-              >
-                Admin Panel
-              </a>
-              <button
-                type="button"
-                onClick={openLogin}
-                className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                onClick={openSignup}
-                className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
-              >
-                Sign Up
-              </button>
+              {session?.user ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => router.push(session.user.status === "admin" ? "/admin" : "/dashboard")}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Open Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={openLogin}
+                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Login
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openSignup}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Sign Up
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-10 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
@@ -114,7 +166,7 @@ export default function Home() {
                 Clean, modern MLM landing with Electric Orange accents.
               </h1>
               <p className="mt-4 max-w-2xl text-pretty text-subtext">
-                Har user sirf 2 log add kar sakta hai. Binary structure 20 levels tak.
+                Each user can invite two members. The binary structure visualizes up to 33 levels; payouts are limited to the first 20 levels.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <a className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90" href="#levels">
@@ -153,17 +205,17 @@ export default function Home() {
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
                   <span className="text-sm text-subtext">Max Depth</span>
-                  <span className="text-lg font-semibold text-foreground">20 Levels</span>
+                  <span className="text-lg font-semibold text-foreground">33 Levels</span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
                   <span className="text-sm text-subtext">Primary Tone</span>
-                  <span className="text-lg font-semibold text-foreground">Electric Orange</span>
+                  <span className="text-lg font-semibold text-foreground">Teal</span>
                 </div>
               </div>
               <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
                 <div className="text-xs uppercase text-subtext">Theme</div>
                 <div className="mt-2 text-2xl font-semibold">Blackberry Contrast</div>
-                <div className="mt-3 text-sm text-subtext">Sharp, modern, fintech‑grade surfaces.</div>
+                <div className="mt-3 text-sm text-subtext">Sharp, modern, fintech-grade surfaces.</div>
               </div>
             </div>
           </div>
@@ -217,19 +269,10 @@ export default function Home() {
               <>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-subtext">Visual Preview</div>
-                  <div className="text-xs text-subtext">Showing total {visibleNodes.toLocaleString()} nodes up to L{level}</div>
+                  <div className="text-xs text-subtext">Showing up to L{level}</div>
                 </div>
-                <div
-                  className="mt-5 grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${gridColsResponsive}, minmax(0, 1fr))` }}
-                >
-                  {Array.from({ length: visibleNodes }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square rounded-full bg-primary/15 ring-1 ring-ring transition hover:bg-primary"
-                      title={`Node ${i + 1}`}
-                    />
-                  ))}
+                <div className="mt-5 max-h-[600px] overflow-y-auto">
+                  <TreePreview depth={level} />
                 </div>
                 <div className="mt-6 h-3 w-full rounded-full bg-muted ring-1 ring-ring">
                   <div className="h-3 rounded-full bg-primary" style={{ width: `${Math.min(100, pctOfMax)}%` }} />
@@ -257,15 +300,15 @@ export default function Home() {
           <div className="mt-6 grid gap-6 sm:grid-cols-3">
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
               <div className="text-sm text-subtext">Binary Join</div>
-              <div className="mt-1 text-lg">Har user 2 log add karega</div>
+              <div className="mt-1 text-lg">Each user invites two members</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
               <div className="text-sm text-subtext">Levels</div>
-              <div className="mt-1 text-lg">20 tak structure expand hoga</div>
+              <div className="mt-1 text-lg">Structure expands up to 33 levels</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
               <div className="text-sm text-subtext">Accounts</div>
-              <div className="mt-1 text-lg">Login / Signup se user account banay</div>
+              <div className="mt-1 text-lg">Create your account via Login / Sign Up</div>
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -374,8 +417,8 @@ export default function Home() {
         <div className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-muted p-6 text-sm text-subtext ring-1 ring-ring sm:flex-row">
           <div>© {new Date().getFullYear()} MLM Marketing</div>
           <div className="inline-flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-primary shadow-[0_0_10px_rgba(255,106,0,0.35)]" />
-            <span>Electric Orange accent theme</span>
+            <span className="h-3 w-3 rounded-full bg-primary shadow-[0_0_10px_rgba(0,178,163,0.35)]" />
+            <span>Teal accent theme</span>
           </div>
         </div>
       </footer>
@@ -393,12 +436,23 @@ export default function Home() {
             className="absolute inset-0 bg-black/30"
             aria-label="Close"
           />
+          {toastMessage ? (
+            <div className="fixed right-6 top-6 z-50 rounded-2xl bg-card px-4 py-3 text-sm font-medium text-foreground shadow-lg ring-1 ring-ring">
+              {toastMessage}
+            </div>
+          ) : null}
           <div className="relative w-full max-w-md rounded-3xl bg-card p-6 shadow-xl ring-1 ring-ring">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-2xl font-semibold">{authMode === "login" ? "Login" : "Create Account"}</div>
+                <div className="text-2xl font-semibold">
+                  {authMode === "login" ? "Login" : 
+                   authMode === "signup" ? "Create Account" : 
+                   "Reset Password"}
+                </div>
                 <div className="mt-1 text-sm text-subtext">
-                  {authMode === "login" ? "Apna account access karein." : "Naya account banayein."}
+                  {authMode === "login" ? "Access your account." : 
+                   authMode === "signup" ? "Create a new account." : 
+                   "Reset your password."}
                 </div>
               </div>
               <button
@@ -417,6 +471,9 @@ export default function Home() {
                 onClick={() => {
                   setAuthMessage("");
                   setAuthMode("login");
+                  setSignupStep("form");
+                  setForgotStep("email");
+                  setOtpCode("");
                 }}
                 className={`rounded-xl px-4 py-2 text-sm font-medium transition ${authMode === "login" ? "bg-card text-foreground shadow-sm" : "text-subtext hover:text-foreground"}`}
               >
@@ -427,6 +484,9 @@ export default function Home() {
                 onClick={() => {
                   setAuthMessage("");
                   setAuthMode("signup");
+                  setSignupStep("form");
+                  setForgotStep("email");
+                  setOtpCode("");
                 }}
                 className={`rounded-xl px-4 py-2 text-sm font-medium transition ${authMode === "signup" ? "bg-card text-foreground shadow-sm" : "text-subtext hover:text-foreground"}`}
               >
@@ -436,9 +496,142 @@ export default function Home() {
 
             <form
               className="mt-6 grid gap-4"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                setAuthMessage(authMode === "login" ? "Login UI ready (backend connect pending)." : "Signup UI ready (backend connect pending).");
+                if (authLoading) return;
+                setAuthMessage("");
+                setAuthLoading(true);
+                try {
+                  if (authMode === "login") {
+                    const result = await signIn("credentials", {
+                      email,
+                      password,
+                      redirect: false,
+                    });
+                    if (result?.error) {
+                      setAuthMessage("Invalid credentials");
+                      return;
+                    }
+                    setAuthOpen(false);
+                    router.push("/dashboard");
+                    return;
+                  }
+
+                  if (authMode === "forgot") {
+                    if (forgotStep === "email") {
+                      const otpRes = await fetch("/api/user/request-otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, purpose: "password_reset" }),
+                      });
+                      const otpData = (await otpRes.json()) as any;
+                      if (!otpRes.ok) {
+                        setAuthMessage(typeof otpData?.error === "string" ? otpData.error : "OTP request failed");
+                        return;
+                      }
+                      setForgotStep("otp");
+                      setForgotDevOtp(otpData?.devOtp ?? "");
+                      setAuthMessage(otpData?.devOtp ? "OTP sent. Demo OTP is shown below." : "OTP sent to your email. Please enter the code.");
+                      return;
+                    }
+
+                    if (forgotStep === "otp") {
+                      const verifyRes = await fetch("/api/user/verify-otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, purpose: "password_reset", code: otpCode }),
+                      });
+                      const verifyData = (await verifyRes.json()) as any;
+                      if (!verifyRes.ok) {
+                        setAuthMessage(typeof verifyData?.error === "string" ? verifyData.error : "OTP verification failed");
+                        return;
+                      }
+                      setForgotStep("reset");
+                      setAuthMessage("OTP verified. Please enter your new password.");
+                      return;
+                    }
+
+                    if (forgotStep === "reset") {
+                      if (newPassword !== confirmNewPassword) {
+                        setAuthMessage("New passwords do not match");
+                        return;
+                      }
+                      const resetRes = await fetch("/api/user/reset-password", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, newPassword, code: otpCode }),
+                      });
+                      const resetData = (await resetRes.json()) as any;
+                      if (!resetRes.ok) {
+                        setAuthMessage(typeof resetData?.error === "string" ? resetData.error : "Password reset failed");
+                        return;
+                      }
+                      setToastMessage("Password updated");
+                      toast.success("Password updated");
+                      setAuthMessage("Password reset successfully. You can now login with your new password.");
+                      setAuthMode("login");
+                      setForgotStep("email");
+                      setForgotDevOtp("");
+                      setNewPassword("");
+                      setConfirmNewPassword("");
+                      setOtpCode("");
+                      return;
+                    }
+                  }
+
+                  if (authMode === "signup") {
+                    if (signupStep === "form") {
+                      if (password !== confirmPassword) {
+                        setAuthMessage("Passwords do not match");
+                        return;
+                      }
+                      const res = await fetch("/api/auth/register", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          username: fullName,
+                          email,
+                          password,
+                          referrerCode: hasRefParam && referrerCode.trim() ? referrerCode.trim() : undefined,
+                        }),
+                      });
+                      const data = (await res.json()) as any;
+                      if (!res.ok) {
+                        setAuthMessage(typeof data?.error === "string" ? data.error : "Signup failed");
+                        return;
+                      }
+                      const otpRes = await fetch("/api/user/request-otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, purpose: "registration" }),
+                      });
+                      const otpData = (await otpRes.json()) as any;
+                      setSignupStep("otp");
+                      setAuthMessage(otpData?.devOtp ? `OTP requested. Dev OTP: ${otpData.devOtp}` : "OTP requested. Please enter the code.");
+                      return;
+                    }
+
+                    const verifyRes = await fetch("/api/user/verify-otp", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email, purpose: "registration", code: otpCode }),
+                    });
+                    const verifyData = (await verifyRes.json()) as any;
+                    if (!verifyRes.ok) {
+                      setAuthMessage(typeof verifyData?.error === "string" ? verifyData.error : "OTP verification failed");
+                      return;
+                    }
+                    const result = await signIn("credentials", { email, password, redirect: false });
+                    if (result?.error) {
+                      setAuthMessage("Account created, but login failed");
+                      return;
+                    }
+                    setAuthOpen(false);
+                    router.push("/dashboard");
+                  }
+                } finally {
+                  setAuthLoading(false);
+                }
               }}
             >
               {authMode === "signup" ? (
@@ -447,31 +640,56 @@ export default function Home() {
                   <input
                     required
                     type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                     placeholder="Your name"
                   />
                 </label>
               ) : null}
 
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-foreground">Email</span>
-                <input
-                  required
-                  type="email"
-                  className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="name@email.com"
-                />
-              </label>
+              {(authMode === "login" || authMode === "signup" || (authMode === "forgot" && forgotStep === "email")) ? (
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">Email</span>
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="name@email.com"
+                  />
+                </label>
+              ) : null}
 
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-foreground">Password</span>
-                <input
-                  required
-                  type="password"
-                  className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="••••••••"
-                />
-              </label>
+              {authMode === "signup" && hasRefParam ? (
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">Referrer Code</span>
+                  <input
+                    type="text"
+                    value={referrerCode}
+                    onChange={(e) => setReferrerCode(e.target.value)}
+                    readOnly
+                    disabled
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="SAMAR786"
+                  />
+                </label>
+              ) : null}
+
+              {authMode !== "forgot" ? (
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">Password</span>
+                  <input
+                    required
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="••••••••"
+                  />
+                </label>
+              ) : null}
 
               {authMode === "signup" ? (
                 <label className="grid gap-2">
@@ -479,10 +697,58 @@ export default function Home() {
                   <input
                     required
                     type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                     placeholder="••••••••"
                   />
                 </label>
+              ) : null}
+
+              {((authMode === "signup" && signupStep === "otp") || (authMode === "forgot" && forgotStep === "otp")) ? (
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">OTP Code</span>
+                  <input
+                    required
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="123456"
+                  />
+                </label>
+              ) : null}
+              {authMode === "forgot" && forgotStep === "otp" && forgotDevOtp ? (
+                <div className="rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  Demo OTP: {forgotDevOtp}
+                </div>
+              ) : null}
+
+              {authMode === "forgot" && forgotStep === "reset" ? (
+                <>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium text-foreground">New Password</span>
+                    <input
+                      required
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="••••••••"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium text-foreground">Confirm New Password</span>
+                    <input
+                      required
+                      type="password"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="••••••••"
+                    />
+                  </label>
+                </>
               ) : null}
 
               {authMessage ? (
@@ -491,23 +757,161 @@ export default function Home() {
 
               <button
                 type="submit"
-                className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                disabled={authLoading}
+                className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-60"
               >
-                {authMode === "login" ? "Login" : "Create account"}
+                {authMode === "login" ? "Login" : 
+                 authMode === "signup" ? (signupStep === "form" ? "Create account" : "Verify OTP") : 
+                 forgotStep === "email" ? "Next" :
+                 forgotStep === "otp" ? "Verify OTP" : "Update Password"}
               </button>
 
               <div className="text-center text-sm text-subtext">
                 {authMode === "login" ? (
-                  <button type="button" onClick={openSignup} className="font-medium text-foreground underline underline-offset-4">
-                    New here? Create an account
+                  <>
+                    <button type="button" onClick={openSignup} className="font-medium text-foreground underline underline-offset-4">
+                      New here? Create an account
+                    </button>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMessage("");
+                          setAuthMode("forgot");
+                          setForgotStep("email");
+                          setForgotDevOtp("");
+                          setOtpCode("");
+                          setNewPassword("");
+                          setConfirmNewPassword("");
+                        }}
+                        className="font-medium text-foreground underline underline-offset-4"
+                      >
+                        Forgot your password?
+                      </button>
+                    </div>
+                  </>
+                ) : authMode === "signup" ? (
+                  <button type="button" onClick={openLogin} className="font-medium text-foreground underline underline-offset-4">
+                    Already have an account? Login
                   </button>
                 ) : (
                   <button type="button" onClick={openLogin} className="font-medium text-foreground underline underline-offset-4">
-                    Already have an account? Login
+                    Back to Login
                   </button>
                 )}
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TreePreview({ depth }: { depth: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(800);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setW(el.clientWidth || 800);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const visibleDepth = Math.min(depth, 7);
+  const rowH = 84;
+  const padY = 20;
+  const iconSize = 24;
+  const rows = useMemo(() => {
+    const r: Array<Array<{ x: number; y: number; idx: number }>> = [];
+    for (let level = 1; level <= visibleDepth; level += 1) {
+      const count = Math.pow(2, level - 1);
+      const y = padY + (level - 1) * rowH;
+      const pts = Array.from({ length: count }, (_, idx) => ({
+        x: Math.round(w * ((idx + 1) / (count + 1))),
+        y,
+        idx,
+      }));
+      r.push(pts);
+    }
+    return r;
+  }, [visibleDepth, w]);
+  const svgW = w;
+  const svgH = padY + visibleDepth * rowH + 20;
+  const lines: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  for (let l = 0; l < rows.length - 1; l += 1) {
+    const parents = rows[l];
+    const children = rows[l + 1];
+    for (let i = 0; i < parents.length; i += 1) {
+      const p = parents[i];
+      const cL = children[i * 2];
+      const cR = children[i * 2 + 1];
+      lines.push({ x1: p.x, y1: p.y + iconSize / 2, x2: cL.x, y2: cL.y - iconSize / 2 });
+      lines.push({ x1: p.x, y1: p.y + iconSize / 2, x2: cR.x, y2: cR.y - iconSize / 2 });
+    }
+  }
+  return (
+    <div ref={ref} className="relative mt-5 w-full">
+      <svg width={svgW} height={svgH} className="block" style={{ maxWidth: "100%" }}>
+        {lines.map((ln, idx) => (
+          <line
+            key={idx}
+            x1={ln.x1}
+            y1={ln.y1}
+            x2={ln.x2}
+            y2={ln.y2}
+            stroke="var(--ring)"
+            strokeWidth={1.5}
+          />
+        ))}
+      </svg>
+      <div className="absolute inset-0">
+        {rows.flatMap((row, l) =>
+          row.map((pt, i) => (
+            <div
+              key={`n-${l}-${i}`}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ left: pt.x, top: pt.y }}
+              title={`L${l + 1} · Node ${i + 1}`}
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 ring-1 ring-ring">
+                <FaUser className="text-foreground" size={16} />
+              </div>
+            </div>
+          )),
+        )}
+      </div>
+
+      {depth > visibleDepth ? (
+        <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
+          <div className="text-xs text-subtext">Deep Levels (L{visibleDepth + 1} to L{depth}) · Compact Binary View</div>
+          <div className="mt-3 grid gap-3">
+            {Array.from({ length: depth - visibleDepth }, (_, i) => {
+              const level = visibleDepth + i + 1;
+              const nodes = Math.pow(2, level - 1);
+              return (
+                <div key={level} className="rounded-xl bg-card px-3 py-3 ring-1 ring-ring">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-foreground">Level {level}</div>
+                    <div className="text-xs text-subtext">{nodes.toLocaleString()} nodes</div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-center gap-4">
+                    <div className="flex items-center justify-center rounded-full bg-primary/15 p-1.5 ring-1 ring-ring">
+                      <FaUser className="text-foreground" size={14} />
+                    </div>
+                    <div className="h-px w-8 bg-ring" />
+                    <div className="flex items-center justify-center rounded-full bg-primary/15 p-1.5 ring-1 ring-ring">
+                      <FaUser className="text-foreground" size={14} />
+                    </div>
+                    <div className="h-px w-8 bg-ring" />
+                    <div className="flex items-center justify-center rounded-full bg-primary/15 p-1.5 ring-1 ring-ring">
+                      <FaUser className="text-foreground" size={14} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}

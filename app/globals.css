@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #1e2329;
-  --primary: #ff6a00;
-  --secondary: #f5f6f8;
-  --accent: #ff8c2b;
-  --muted: #f5f6f8;
-  --card: #ffffff;
-  --ring: #e6e9ef;
-  --subtext: #707a8a;
+  --background: #0a1420;
+  --foreground: #eaf6ff;
+  --primary: #00b2a3;
+  --secondary: #0f1d2e;
+  --accent: #00ffd1;
+  --muted: #0d1b2a;
+  --card: #0b1726;
+  --ring: #17324a;
+  --subtext: #8fb3c9;
 }
 
 @theme inline {
@@ -28,11 +28,11 @@
 
 body {
   background-color: var(--background);
-  background-image: radial-gradient(circle at 12% 8%, rgba(255, 106, 0, 0.18), transparent 45%),
-    radial-gradient(circle at 88% 14%, rgba(255, 140, 43, 0.14), transparent 46%),
-    radial-gradient(circle at 52% 88%, rgba(99, 102, 241, 0.10), transparent 55%),
-    radial-gradient(circle at 22% 72%, rgba(16, 185, 129, 0.06), transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, #f5f6f8 40%, #ffffff 100%);
+  background-image:
+    radial-gradient(800px 400px at 10% 10%, rgba(0, 201, 255, 0.18), transparent 60%),
+    radial-gradient(600px 300px at 85% 15%, rgba(0, 255, 209, 0.14), transparent 62%),
+    radial-gradient(700px 500px at 50% 85%, rgba(56, 189, 248, 0.10), transparent 65%),
+    linear-gradient(180deg, #0a1420 0%, #0f1d2e 60%, #0a1420 100%);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

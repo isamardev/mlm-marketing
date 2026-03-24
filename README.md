@@ -2,6 +2,22 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Database (MySQL)
+
+Create a `.env.local` file using `.env.example` and set your MySQL database name to `mlm-project`:
+
+```bash
+# example
+DATABASE_URL="mysql://root:password@localhost:3306/mlm-project"
+AUTH_SECRET="replace-with-a-long-random-string"
+```
+
+Then create tables:
+
+```bash
+npx prisma db push
+```
+
 First, run the development server:
 
 ```bash
