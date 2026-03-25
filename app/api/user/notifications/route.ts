@@ -8,6 +8,12 @@ export async function GET(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.user.status === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (session.user.status === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
 
     const url = new URL(req.url);
     const take = Math.min(100, Math.max(1, Number(url.searchParams.get("take") ?? 50)));
@@ -29,4 +35,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });
   }
 }
-

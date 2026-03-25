@@ -14,6 +14,12 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.user.status === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (session.user.status === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
 
     const body = await req.json();
     const parsed = schema.safeParse(body);
@@ -45,4 +51,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Failed to create ticket" }, { status: 500 });
   }
 }
-

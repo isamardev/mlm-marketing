@@ -45,6 +45,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return null;
 
+    if (user.status === "inactive" || user.status === "blocked") return null;
+
     const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
     const status = adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;
 
@@ -62,6 +64,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.userId = user.id;
         token.status = (user as { status?: string }).status ?? "active";
+      }
+      if (!user && token.userId && token.status !== "admin") {
+        const db = getDb();
+        const fresh = await db.user.findUnique({
+          where: { id: token.userId as string },
+          select: { status: true, email: true },
+        });
+        if (fresh?.status) {
+          token.status = fresh.status;
+        }
       }
       const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
       if (adminEmail && typeof token.email === "string" && token.email.toLowerCase() === adminEmail) {

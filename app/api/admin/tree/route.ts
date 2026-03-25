@@ -26,6 +26,7 @@ export async function GET() {
       const created = await db.user.create({
         data: {
           username: "Admin",
+          country: "Pakistan",
           email: COMPANY_ADMIN_EMAIL,
           passwordHash,
           walletAddress: walletPlaceholder,

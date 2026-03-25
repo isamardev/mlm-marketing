@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
+import { getDb } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 
 const schema = z.object({
@@ -26,10 +28,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const db = getDb();
+    const txHash = `demo:${Date.now()}:${parsed.data.sourceUserId}`;
+    const deposit = await db.deposit.create({
+      data: {
+        userId: parsed.data.sourceUserId,
+        chain: "BSC",
+        txHash,
+        amount: new Prisma.Decimal(parsed.data.amount.toFixed(2)),
+        status: "pending",
+      },
+      select: { id: true },
+    });
+
     const result = await runFixedPayoutEngine({
       sourceUserId: parsed.data.sourceUserId,
       depositAmount: parsed.data.amount,
-      note: parsed.data.note,
+      note: parsed.data.note ?? "Demo deposit",
+    });
+
+    await db.deposit.update({
+      where: { txHash },
+      data: { status: "confirmed", verifiedAt: new Date() },
     });
 
     return NextResponse.json({ success: true, ...result });

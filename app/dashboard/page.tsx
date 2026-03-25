@@ -2,12 +2,10 @@
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { FaUser } from "react-icons/fa";
+import { FaUser, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaTelegramPlane, FaWhatsapp } from "react-icons/fa";
 import DepositButton from "@/components/DepositButton.jsx";
 import { toast } from "react-toastify";
-import ConnectWallet from "@/components/ConnectWallet";
-import { ADMIN_WALLET_ADDRESS } from "@/lib/admin";
-import { useAccount } from "wagmi";
+import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -15,7 +13,6 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
   const [depositAmount, setDepositAmount] = useState<string>("10");
   const [step, setStep] = useState<1 | 2>(1);
   const [uiMsg, setUiMsg] = useState<string>("");
-  const { isConnected } = useAccount();
   const autoPollRef = useRef<any>(null);
 
   useEffect(() => {
@@ -101,27 +98,27 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
         ) : (
           <div className="w-full">
             <div className="text-lg font-semibold">Payment Details</div>
-            <div className="mt-1 text-xs text-subtext">Scan QR or use BEP20 address</div>
+            <div className="mt-1 text-xs text-subtext">Send payment to the fixed receiver wallet or use demo payment</div>
             <div className="mt-4 grid gap-3">
               <img
                 alt="Deposit QR"
                 src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-                  ADMIN_WALLET_ADDRESS,
+                  RECEIVER_WALLET_ADDRESS,
                 )}&size=180x180&margin=0`}
                 className="mx-auto h-[160px] w-[160px] rounded-lg ring-1 ring-ring"
               />
               <div className="grid gap-2">
-                <div className="text-xs font-medium text-subtext">BEP20 Address</div>
+                <div className="text-xs font-medium text-subtext">Receiver Address</div>
                 <div className="flex items-stretch gap-2">
                   <div className="flex-1 break-all rounded-2xl bg-background p-3 text-sm font-mono ring-1 ring-ring">
-                    {ADMIN_WALLET_ADDRESS}
+                    {RECEIVER_WALLET_ADDRESS}
                   </div>
                   <div className="flex items-center">
                     <button
                       type="button"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(ADMIN_WALLET_ADDRESS);
+                          await navigator.clipboard.writeText(RECEIVER_WALLET_ADDRESS);
                           toast.success("Address copied");
                         } catch {
                           toast.error("Copy failed");
@@ -135,24 +132,17 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
                   </div>
                 </div>
               </div>
-              {!isConnected ? (
-                <div className="mt-2">
-                  <ConnectWallet
-                    fullWidth
-                    connectText="If you want to pay from wallet connect wallet"
-                    connectedText="Connected"
-                  />
-                </div>
-              ) : (
-                <div className="mt-2">
-                  <DepositButton
-                    amount={Number(depositAmount) || 10}
-                    userId={userId}
-                    fullWidth
-                    label="Pay From Wallet"
-                  />
-                </div>
-              )}
+              <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
+                Real blockchain deposits on {RECEIVER_WALLET_NETWORK} are auto-detected for the matched sender wallet. For testing, use the demo payment button below.
+              </div>
+              <div className="mt-2">
+                <DepositButton
+                  amount={Number(depositAmount) || 10}
+                  userId={userId}
+                  fullWidth
+                  label="Pay Demo"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -161,11 +151,11 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
           <div className="mt-2 grid gap-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-subtext">Network</span>
-              <span className="font-medium">BEP20 (BSC)</span>
+              <span className="font-medium">{RECEIVER_WALLET_NETWORK}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-subtext">Amount</span>
-              <span className="font-semibold">{Number(depositAmount) || 0} USDT</span>
+              <span className="font-semibold">{Number(depositAmount) || 0} {RECEIVER_WALLET_TOKEN}</span>
             </div>
           </div>
           {step === 2 && (
@@ -587,26 +577,38 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
                 <div className="text-[10px] text-subtext">
                   L{pt.node.depth}
                 </div>
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const text = origin ? `${origin}/?ref=${pt.node.referrerCode}` : pt.node.referrerCode;
-                    try {
-                      await navigator.clipboard.writeText(text);
-                      onCopyMessage(`Copied ${(pt.node.email === COMPANY_ADMIN_EMAIL ? "Admin" : pt.node.username)}'s referral link`);
-                      toast.success("Referral link copied");
-                    } catch {
-                      onCopyMessage("Copy failed");
-                      toast.error("Copy failed");
-                    }
-                  }}
-                  className="mt-1 inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-[10px] text-subtext ring-1 ring-ring transition hover:text-foreground"
-                  title="Copy team member referral link"
-                >
-                  <span className="truncate max-w-[120px] sm:max-w-[200px]">{pt.node.referrerCode}</span>
-                  <span className="text-primary">Copy</span>
-                </button>
+                {(pt.node.email === COMPANY_ADMIN_EMAIL || pt.node.verified) ? (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const text = origin ? `${origin}/?ref=${pt.node.referrerCode}` : pt.node.referrerCode;
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        onCopyMessage(`Copied ${(pt.node.email === COMPANY_ADMIN_EMAIL ? "Admin" : pt.node.username)}'s referral link`);
+                        toast.success("Referral link copied");
+                      } catch {
+                        onCopyMessage("Copy failed");
+                        toast.error("Copy failed");
+                      }
+                    }}
+                    className="mt-1 inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-[10px] text-subtext ring-1 ring-ring transition hover:text-foreground"
+                    title="Copy team member referral link"
+                  >
+                    <span className="truncate max-w-[120px] sm:max-w-[200px]">{pt.node.referrerCode}</span>
+                    <span className="text-primary">Copy</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-1 inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-[10px] text-subtext ring-1 ring-ring opacity-70"
+                    title="Referral locked until verified"
+                  >
+                    <span className="truncate max-w-[120px] sm:max-w-[200px]">—</span>
+                    <span className="text-subtext">Locked</span>
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -646,6 +648,7 @@ export default function UserDashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<"home" | "network" | "wallet" | "settings">("home");
   const [walletOpen, setWalletOpen] = useState(false);
   const [walletTab, setWalletTab] = useState<
@@ -655,6 +658,8 @@ export default function UserDashboardPage() {
   const maxLevel = 33;
 
   const [profile, setProfile] = useState<any>(null);
+  const [referralGate, setReferralGate] = useState<any>(null);
+  const [gateSecondsLeft, setGateSecondsLeft] = useState<number>(0);
   const [directReferrals, setDirectReferrals] = useState<number>(0);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [refStats, setRefStats] = useState<{ total: number; levels: Record<string, number> } | null>(null);
@@ -669,11 +674,118 @@ export default function UserDashboardPage() {
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [openLevels, setOpenLevels] = useState<number[]>([]);
+  const [totals, setTotals] = useState<{ deposits: number; withdrawals: number }>({ deposits: 0, withdrawals: 0 });
+  const [p2pRecipient, setP2pRecipient] = useState("");
+  const [p2pAmount, setP2pAmount] = useState("");
+  const [p2pMsg, setP2pMsg] = useState("");
+  const [p2pItems, setP2pItems] = useState<any[]>([]);
+  const toUSD = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
+      Number.isFinite(n) ? n : 0,
+    );
+  const todayEarnings = useMemo(() => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      return Number(
+        (recentTransactions || [])
+          .filter(
+            (t: any) =>
+              String(t?.type || "").toLowerCase() === "commission" &&
+              String(t?.createdAt || "").slice(0, 10) === today,
+          )
+          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
+          .toFixed(2),
+      );
+    } catch {
+      return 0;
+    }
+  }, [recentTransactions]);
+  const totalIncomeAllTime = useMemo(() => {
+    try {
+      return Number(
+        (recentTransactions || [])
+          .filter((t: any) => String(t?.type || "").toLowerCase() === "commission")
+          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
+          .toFixed(2),
+      );
+    } catch {
+      return 0;
+    }
+  }, [recentTransactions]);
+  const totalWithdrawAllTime = useMemo(() => {
+    try {
+      return Number(
+        (recentTransactions || [])
+          .filter((t: any) => String(t?.type || "").toLowerCase() === "withdrawal")
+          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
+          .toFixed(2),
+      );
+    } catch {
+      return 0;
+    }
+  }, [recentTransactions]);
 
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
     setOrigin(o);
   }, []);
+
+  useEffect(() => {
+    const handler = async () => {
+      try {
+        const res = await fetch("/api/user/dashboard", { cache: "no-store" });
+        const dash = await res.json();
+        if (!res.ok) {
+          if (res.status === 403) {
+            await signOut({ callbackUrl: "/" });
+            return;
+          }
+          return;
+        }
+        if (!dash?.profile) return;
+        setProfile(dash.profile);
+        setReferralGate(dash.referralGate ?? null);
+        setGateSecondsLeft(Number(dash?.referralGate?.secondsLeft ?? 0));
+        setDirectReferrals(dash.directReferrals ?? 0);
+        setRecentTransactions(dash.recentTransactions ?? []);
+        setTotals({
+          deposits: Number(dash?.depositTotal ?? 0),
+          withdrawals: Number(dash?.withdrawalTotal ?? 0),
+        });
+      } catch {}
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("deposit:updated", handler as any);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("deposit:updated", handler as any);
+      }
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!referralGate || referralGate.state !== "unverified") return;
+    setGateSecondsLeft(Number(referralGate.secondsLeft ?? 0));
+    const id = setInterval(() => {
+      setGateSecondsLeft((v) => Math.max(0, v - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [referralGate?.state, referralGate?.expiresAt]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch("/api/user/p2p-history", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) return;
+        setP2pItems(Array.isArray(data?.items) ? data.items : []);
+      } catch {}
+    };
+    if (active === "wallet" && walletTab === "p2pHistory") {
+      load();
+    }
+  }, [active, walletTab]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -692,18 +804,33 @@ export default function UserDashboardPage() {
     }
 
     const load = async () => {
-      const [dash, stats, noti, team, upline] = await Promise.all([
-        fetch("/api/user/dashboard", { cache: "no-store" }).then((r) => r.json()),
+      const dashRes = await fetch("/api/user/dashboard", { cache: "no-store" });
+      const dash = await dashRes.json();
+      if (!dashRes.ok) {
+        if (dashRes.status === 403) {
+          await signOut({ callbackUrl: "/" });
+          return;
+        }
+        throw new Error("Dashboard load failed");
+      }
+      if (dash?.profile) {
+        setProfile(dash.profile);
+        setReferralGate(dash.referralGate ?? null);
+        setGateSecondsLeft(Number(dash?.referralGate?.secondsLeft ?? 0));
+        setDirectReferrals(dash.directReferrals ?? 0);
+        setRecentTransactions(dash.recentTransactions ?? []);
+        setTotals({
+          deposits: Number(dash?.depositTotal ?? 0),
+          withdrawals: Number(dash?.withdrawalTotal ?? 0),
+        });
+      }
+
+      const [stats, noti, team, upline] = await Promise.all([
         fetch("/api/user/referral-stats", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/user/notifications", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/user/my-team", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/user/upline", { cache: "no-store" }).then((r) => r.json()),
       ]);
-      if (dash?.profile) {
-        setProfile(dash.profile);
-        setDirectReferrals(dash.directReferrals ?? 0);
-        setRecentTransactions(dash.recentTransactions ?? []);
-      }
       if (stats?.levels) setRefStats(stats);
       if (Array.isArray(noti?.items)) {
         setNotifications(noti.items);
@@ -731,6 +858,22 @@ export default function UserDashboardPage() {
     const b = parts[1]?.[0] ?? parts[0]?.[1] ?? "S";
     return `${a}${b}`.toUpperCase();
   }, [profile?.username]);
+  const gateTime = useMemo(() => {
+    const s = Math.max(0, Number(gateSecondsLeft || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  }, [gateSecondsLeft]);
+
+  const handleMenuToggle = () => {
+    const lg = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+    if (lg) {
+      setSidebarCollapsed((v) => !v);
+    } else {
+      setMobileNavOpen(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-transparent text-foreground">
@@ -739,11 +882,20 @@ export default function UserDashboardPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setMobileNavOpen(true)}
+              onClick={handleMenuToggle}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-card shadow-sm ring-1 ring-ring hover:bg-muted lg:hidden"
               aria-label="Open menu"
             >
               ☰
+            </button>
+            <button
+              type="button"
+              onClick={handleMenuToggle}
+              className="hidden h-10 w-10 items-center justify-center rounded-xl bg-card shadow-sm ring-1 ring-ring hover:bg-muted lg:inline-flex"
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar"
+            >
+              {sidebarCollapsed ? "›" : "‹"}
             </button>
               <div className="flex items-center gap-3">
                 <img src="/logo.svg" alt="Logo" className="h-7 w-auto rounded-md ring-1 ring-ring" />
@@ -751,17 +903,51 @@ export default function UserDashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden sm:block text-right">
-              <div className="text-sm font-medium">{profile?.username ?? "User"}</div>
-              <div className="text-xs text-subtext">{profile?.referrerCode ?? "-"}</div>
+              <div className="flex items-center justify-end gap-2">
+                <div className="text-sm font-medium">{profile?.username ?? "User"}</div>
+                {referralGate?.state === "unverified" ? (
+                  <span className="rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                    UNVERIFIED {gateTime}
+                  </span>
+                ) : referralGate?.state === "verified" ? (
+                  <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                    VERIFIED
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-xs text-subtext">
+                {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "-"}
+              </div>
             </div>
-          <ConnectWallet />
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20">
               {initials}
             </div>
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
+        {referralGate?.state === "unverified" ? (
+          <div className="mt-4 rounded-2xl bg-red-500/15 p-4 ring-1 ring-red-500/25">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white">UNVERIFIED</span>
+                <span className="text-sm text-subtext">Deposit within 24 hours to verify your account</span>
+              </div>
+              <div className="text-sm font-semibold text-red-200">{gateTime}</div>
+            </div>
+          </div>
+        ) : referralGate?.state === "verified" ? (
+          <div className="mt-4 rounded-2xl bg-green-500/15 p-4 ring-1 ring-green-500/25">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white">VERIFIED</span>
+                <span className="text-sm text-subtext">Your referral verification is complete</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={`mt-6 grid gap-6 ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
+          {!sidebarCollapsed && (
           <aside className="hidden lg:block">
             <div className="rounded-3xl bg-card p-3 shadow-sm ring-1 ring-ring">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Menu</div>
@@ -840,41 +1026,57 @@ export default function UserDashboardPage() {
 
             <div className="mt-6 rounded-3xl bg-card p-5 shadow-sm ring-1 ring-ring">
               <div className="text-xs text-subtext">Referral Link</div>
-              <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
-                {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (profile?.status !== "admin" && directReferrals >= 2) {
-                    setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
-                    setTimeout(() => setUiMessage(""), 3000);
-                    return;
-                  }
-                  
-                  const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    setLinkCopied(true);
-                    toast.success("Invite link copied");
-                    setTimeout(() => setLinkCopied(false), 1200);
-                  } catch {
-                    setUiMessage("Copy failed");
-                    toast.error("Copy failed");
-                    setTimeout(() => setUiMessage(""), 1200);
-                  }
-                }}
-                disabled={profile?.status !== "admin" && directReferrals >= 2}
-                className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
-                  profile?.status !== "admin" && directReferrals >= 2 
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
-                    : linkCopied 
-                    ? "bg-green-500 text-white ring-green-500/20"
-                    : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
-                }`}
-              >
-                {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
-              </button>
+              {referralGate?.state === "unverified" ? (
+                <>
+                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    Verify your account to unlock
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-gray-300 text-sm font-semibold text-gray-600 shadow-sm ring-1 ring-gray-300"
+                  >
+                    Verify to Unlock
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (profile?.status !== "admin" && directReferrals >= 2) {
+                        setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
+                        setTimeout(() => setUiMessage(""), 3000);
+                        return;
+                      }
+                      const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        setLinkCopied(true);
+                        toast.success("Invite link copied");
+                        setTimeout(() => setLinkCopied(false), 1200);
+                      } catch {
+                        setUiMessage("Copy failed");
+                        toast.error("Copy failed");
+                        setTimeout(() => setUiMessage(""), 1200);
+                      }
+                    }}
+                    disabled={profile?.status !== "admin" && directReferrals >= 2}
+                    className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
+                      profile?.status !== "admin" && directReferrals >= 2 
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
+                        : linkCopied 
+                        ? "bg-green-500 text-white ring-green-500/20"
+                        : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
+                    }`}
+                  >
+                    {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
+                  </button>
+                </>
+              )}
             </div>
             <button
               type="button"
@@ -884,45 +1086,64 @@ export default function UserDashboardPage() {
               Logout
             </button>
           </aside>
+          )}
           
           <div className="lg:hidden">
             <div className="rounded-3xl bg-card p-5 shadow-sm ring-1 ring-ring">
               <div className="text-xs text-subtext">Referral Link</div>
-              <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
-                {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (profile?.status !== "admin" && directReferrals >= 2) {
-                    setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
-                    setTimeout(() => setUiMessage(""), 3000);
-                    return;
-                  }
-                  const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    setLinkCopied(true);
-                    toast.success("Invite link copied");
-                    setTimeout(() => setLinkCopied(false), 1200);
-                  } catch {
-                    setUiMessage("Copy failed");
-                    toast.error("Copy failed");
-                    setTimeout(() => setUiMessage(""), 1200);
-                  }
-                }}
-                disabled={profile?.status !== "admin" && directReferrals >= 2}
-                className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
-                  profile?.status !== "admin" && directReferrals >= 2 
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
-                    : linkCopied 
-                    ? "bg-green-500 text-white ring-green-500/20"
-                    : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
-                }`}
-                aria-label="Copy referral link"
-              >
-                {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
-              </button>
+              {referralGate?.state === "unverified" ? (
+                <>
+                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    Verify your account to unlock
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-gray-300 text-sm font-semibold text-gray-600 shadow-sm ring-1 ring-gray-300"
+                    aria-label="Referral link locked"
+                  >
+                    Verify to Unlock
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (profile?.status !== "admin" && directReferrals >= 2) {
+                        setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
+                        setTimeout(() => setUiMessage(""), 3000);
+                        return;
+                      }
+                      const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        setLinkCopied(true);
+                        toast.success("Invite link copied");
+                        setTimeout(() => setLinkCopied(false), 1200);
+                      } catch {
+                        setUiMessage("Copy failed");
+                        toast.error("Copy failed");
+                        setTimeout(() => setUiMessage(""), 1200);
+                      }
+                    }}
+                    disabled={profile?.status !== "admin" && directReferrals >= 2}
+                    className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
+                      profile?.status !== "admin" && directReferrals >= 2 
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
+                        : linkCopied 
+                        ? "bg-green-500 text-white ring-green-500/20"
+                        : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
+                    }`}
+                    aria-label="Copy referral link"
+                  >
+                    {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -949,11 +1170,39 @@ export default function UserDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    <StatCard label="Direct Referrals" value={String(directReferrals)} hint="Level 1 count" />
-                    <StatCard label="Active Level" value={`L${level}`} hint="Current depth" />
-                    <StatCard label="Total Team (L1-33)" value={String(refStats?.total ?? 0)} hint="All levels (payouts L1-20)" />
-                    <StatCard label="Wallet Balance" value={String(profile?.balance ?? 0)} hint={profile?.status ?? ""} />
+                  <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
+                    {[
+                      { href: "https://facebook.com", icon: <FaFacebook size={22} />, name: "Facebook" },
+                      { href: "https://twitter.com", icon: <FaTwitter size={22} />, name: "Twitter" },
+                      { href: "https://instagram.com", icon: <FaInstagram size={22} />, name: "Instagram" },
+                      { href: "https://youtube.com", icon: <FaYoutube size={22} />, name: "YouTube" },
+                      { href: "https://t.me", icon: <FaTelegramPlane size={22} />, name: "Telegram" },
+                      { href: "https://wa.me", icon: <FaWhatsapp size={22} />, name: "WhatsApp" },
+                    ].map((s) => (
+                      <a
+                        key={s.name}
+                        href={s.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-muted p-4 text-center ring-1 ring-ring transition hover:bg-background"
+                        aria-label={s.name}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-card ring-1 ring-ring text-foreground">
+                          {s.icon}
+                        </div>
+                        <div className="text-xs text-subtext">{s.name}</div>
+                      </a>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                  <StatCard label="Available Balance" value={toUSD(Number(profile?.balance ?? 0))} hint="Current" />
+                  <StatCard label="Total Income" value={toUSD(totalIncomeAllTime)} hint="All time" />
+                  <StatCard label="Daily Income" value={toUSD(todayEarnings)} hint="Today" />
+                  <StatCard label="Total Team" value={String(refStats?.total ?? 0)} hint="L1-33" />
+                  <StatCard label="Total Deposit" value={toUSD(totals.deposits)} hint="All time" />
+                  <StatCard label="Total Withdraw" value={toUSD(totals.withdrawals)} hint="All time" />
+                  <StatCard label="Level" value={`L${level}`} hint="Current" />
                   </div>
                 </div>
 
@@ -1005,7 +1254,9 @@ export default function UserDashboardPage() {
                             <div key={n.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                               <div className="truncate">
                                 <div className="font-medium text-foreground">{n.email === COMPANY_ADMIN_EMAIL ? "Admin" : n.username}</div>
-                                <div className="text-xs text-subtext">L{n.depth} · {n.referrerCode}</div>
+                                <div className="text-xs text-subtext">
+                                  L{n.depth} · {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? n.referrerCode : "—"}
+                                </div>
                               </div>
                               <div className="text-xs text-subtext">{n.email}</div>
                             </div>
@@ -1062,26 +1313,38 @@ export default function UserDashboardPage() {
                               members.slice(0, 200).map((n: any) => (
                                 <div key={n.id} className="flex items-center justify-between py-1">
                                   <span className="font-medium text-foreground">{n.username ?? "-"}</span>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      try {
-                                        await navigator.clipboard.writeText(String(n.referrerCode ?? ""));
-                                        setUiMessage("Referral code copied");
-                                        toast.success("Referral code copied");
-                                        setTimeout(() => setUiMessage(""), 1200);
-                                      } catch {
-                                        setUiMessage("Copy failed");
-                                        toast.error("Copy failed");
-                                        setTimeout(() => setUiMessage(""), 1200);
-                                      }
-                                    }}
-                                    className="inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-xs text-subtext ring-1 ring-ring transition hover:text-foreground"
-                                    aria-label="Copy referral code"
-                                  >
-                                    <span>{n.referrerCode ?? "-"}</span>
-                                    <span className="text-primary">Copy</span>
-                                  </button>
+                                  {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(String(n.referrerCode ?? ""));
+                                          setUiMessage("Referral code copied");
+                                          toast.success("Referral code copied");
+                                          setTimeout(() => setUiMessage(""), 1200);
+                                        } catch {
+                                          setUiMessage("Copy failed");
+                                          toast.error("Copy failed");
+                                          setTimeout(() => setUiMessage(""), 1200);
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-xs text-subtext ring-1 ring-ring transition hover:text-foreground"
+                                      aria-label="Copy referral code"
+                                    >
+                                      <span>{n.referrerCode ?? "-"}</span>
+                                      <span className="text-primary">Copy</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-xs text-subtext ring-1 ring-ring opacity-70"
+                                      aria-label="Referral code locked"
+                                    >
+                                      <span>—</span>
+                                      <span className="text-subtext">Locked</span>
+                                    </button>
+                                  )}
                                 </div>
                               ))
                             )}
@@ -1158,13 +1421,119 @@ export default function UserDashboardPage() {
                 {walletTab === "p2pTransfer" && (
                   <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring">
                     <div className="text-sm font-semibold">P2P Fund Transfer</div>
-                    <div className="mt-2 text-sm text-subtext">Coming soon</div>
+                    <div className="mt-4 grid gap-3 sm:max-w-md">
+                      <label className="grid gap-1">
+                        <span className="text-xs text-subtext">Recipient (Email / Referrer Code / Username)</span>
+                        <input
+                          value={p2pRecipient}
+                          onChange={(e) => setP2pRecipient(e.target.value)}
+                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                          placeholder="user@example.com or ABC123"
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="text-xs text-subtext">Amount (USDT)</span>
+                        <input
+                          value={p2pAmount}
+                          onChange={(e) => setP2pAmount(e.target.value)}
+                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                          placeholder="10"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setP2pMsg("");
+                          try {
+                            const amt = Number(p2pAmount);
+                            if (!Number.isFinite(amt) || amt <= 0) {
+                              setP2pMsg("Invalid amount");
+                              toast.error("Invalid amount");
+                              return;
+                            }
+                            if (!p2pRecipient.trim()) {
+                              setP2pMsg("Recipient is required");
+                              toast.error("Recipient is required");
+                              return;
+                            }
+                            const res = await fetch("/api/user/p2p-transfer", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ recipient: p2pRecipient.trim(), amount: amt }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                              setP2pMsg(typeof data?.error === "string" ? data.error : "Transfer failed");
+                              toast.error(typeof data?.error === "string" ? data.error : "Transfer failed");
+                              return;
+                            }
+                            toast.success("Transfer successful");
+                            setP2pRecipient("");
+                            setP2pAmount("");
+                            try {
+                              if (typeof window !== "undefined") {
+                                window.dispatchEvent(new Event("deposit:updated"));
+                              }
+                            } catch {}
+                            try {
+                              const hres = await fetch("/api/user/p2p-history", { cache: "no-store" });
+                              const h = await hres.json();
+                              if (hres.ok) setP2pItems(Array.isArray(h?.items) ? h.items : []);
+                            } catch {}
+                          } catch {
+                            setP2pMsg("Transfer failed");
+                            toast.error("Transfer failed");
+                          }
+                        }}
+                        className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                      >
+                        Send
+                      </button>
+                      {p2pMsg ? (
+                        <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{p2pMsg}</div>
+                      ) : null}
+                    </div>
                   </div>
                 )}
                 {walletTab === "p2pHistory" && (
                   <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring">
                     <div className="text-sm font-semibold">P2P History</div>
-                    <div className="mt-2 text-sm text-subtext">Coming soon</div>
+                    <div className="mt-4 overflow-hidden rounded-2xl ring-1 ring-ring">
+                      <div className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                        <div>Counterparty</div>
+                        <div>Direction</div>
+                        <div>Amount</div>
+                        <div>Date</div>
+                      </div>
+                      <div className="divide-y divide-[color:var(--ring)]">
+                        {p2pItems.map((t: any) => (
+                          <div key={t.id} className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
+                            <div className="truncate">{t.counterparty || "-"}</div>
+                            <div className="font-medium text-foreground capitalize">{t.direction}</div>
+                            <div className="font-medium text-foreground">{Number(t.amount).toFixed(2)}</div>
+                            <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
+                          </div>
+                        ))}
+                        {p2pItems.length === 0 && (
+                          <div className="px-4 py-6 text-center text-sm text-subtext">No P2P transfers yet</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 text-right">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/user/p2p-history", { cache: "no-store" });
+                            const data = await res.json();
+                            if (res.ok) setP2pItems(Array.isArray(data?.items) ? data.items : []);
+                          } catch {}
+                        }}
+                        className="inline-flex h-9 items-center justify-center rounded-full bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </div>
                 )}
               </>

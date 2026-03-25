@@ -1,9 +1,10 @@
 "use client";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "react-toastify";
 
-export default function PaymentMockPage() {
+function PaymentMockPageContent() {
   const sp = useSearchParams();
   const [loading, setLoading] = useState(false);
   const orderId = sp.get("order_id") || "mock-order";
@@ -59,5 +60,13 @@ export default function PaymentMockPage() {
         {msg ? <div className="mt-4 rounded-2xl bg-muted p-4 text-sm text-subtext ring-1 ring-ring">{msg}</div> : null}
       </div>
     </div>
+  );
+}
+
+export default function PaymentMockPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-md px-6 py-10" />}>
+      <PaymentMockPageContent />
+    </Suspense>
   );
 }

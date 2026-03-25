@@ -11,6 +11,12 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.user.status === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (session.user.status === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
 
     const db = getDb();
     const userId = session.user.id;
@@ -37,37 +43,55 @@ export async function GET() {
         walletAddress: string;
         referrerCode: string;
         referredById: string | null;
+        createdAt: Date;
         depth: number;
+        verified: number;
       }>
     >(Prisma.sql`
       WITH RECURSIVE team AS (
-        SELECT id, username, email, walletAddress, referrerCode, referredById, 0 AS depth
+        SELECT id, username, email, walletAddress, referrerCode, referredById, createdAt, 0 AS depth
         FROM \`User\`
         WHERE id = ${userId}
         UNION ALL
-        SELECT u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, t.depth + 1 AS depth
+        SELECT u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, u.createdAt, t.depth + 1 AS depth
         FROM \`User\` u
         JOIN team t ON u.referredById = t.id
         WHERE t.depth < 19
+      ),
+      first_deposits AS (
+        SELECT userId, MIN(createdAt) AS firstDepositAt
+        FROM \`Deposit\`
+        WHERE status = 'confirmed'
+        GROUP BY userId
       )
-      SELECT * FROM team ORDER BY depth ASC
+      SELECT 
+        t.id, t.username, t.email, t.walletAddress, t.referrerCode, t.referredById, t.createdAt, t.depth,
+        CASE 
+          WHEN fd.firstDepositAt IS NOT NULL AND fd.firstDepositAt <= DATE_ADD(t.createdAt, INTERVAL 24 HOUR) THEN 1
+          ELSE 0
+        END AS verified
+      FROM team t
+      LEFT JOIN first_deposits fd ON fd.userId = t.id
+      ORDER BY t.depth ASC
     `);
 
     if (!companyAdmin) {
-      return NextResponse.json({ nodes: descendants });
+      const nodes = descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 }));
+      return NextResponse.json({ nodes });
     }
     const parentIsCompanyAdmin = !!me.referredById && me.referredById === companyAdmin.id;
     if (userId === companyAdmin.id || me.status === "admin") {
-      return NextResponse.json({ nodes: descendants });
+      const nodes = descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 }));
+      return NextResponse.json({ nodes });
     }
     if (parentIsCompanyAdmin) {
       const nodes = [
-        { ...companyAdmin, depth: 0 },
-        ...descendants.map((n) => ({ ...n, depth: Number(n.depth) + 1 })),
+        { ...companyAdmin, depth: 0, verified: true },
+        ...descendants.map((n) => ({ ...n, depth: Number(n.depth) + 1, verified: Number(n.verified) === 1 })),
       ];
       return NextResponse.json({ nodes });
     }
-    return NextResponse.json({ nodes: descendants });
+    return NextResponse.json({ nodes: descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 })) });
   } catch {
     return NextResponse.json({ error: "Failed to fetch team" }, { status: 500 });
   }

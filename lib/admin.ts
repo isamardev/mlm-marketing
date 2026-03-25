@@ -1,4 +1,6 @@
-export const ADMIN_WALLET_ADDRESS = "0x000ed6c7f4c9de18b91b60691baa27ec4f1b0000";
+import { RECEIVER_WALLET_ADDRESS } from "@/lib/receiver-wallet";
+
+export const ADMIN_WALLET_ADDRESS = RECEIVER_WALLET_ADDRESS;
 
 export function isAdminAddress(addr?: string | null) {
   if (!addr) return false;

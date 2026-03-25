@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
-import { ADMIN_WALLET_ADDRESS } from "@/lib/admin";
 import { Prisma } from "@prisma/client";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const addr = (url.searchParams.get("address") || "").toLowerCase();
-    if (!addr || addr !== ADMIN_WALLET_ADDRESS.toLowerCase()) {
+    const session = await auth();
+    if (!session?.user || session.user.status !== "admin") {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 

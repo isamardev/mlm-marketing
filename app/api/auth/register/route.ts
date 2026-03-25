@@ -4,10 +4,12 @@ import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 
 const registerSchema = z.object({
-  username: z.string().min(2).max(60),
+  fullName: z.string().min(2).max(60),
+  country: z.string().min(2).max(60),
   email: z.string().email(),
   password: z.string().min(6).max(100),
   referrerCode: z.string().min(4).max(30).optional(),
+  acceptedTerms: z.literal(true),
 });
 
 const COMPANY_REF_CODE = "ADMIN111";
@@ -16,6 +18,30 @@ const COMPANY_ADMIN_EMAIL = "admin@example.com";
 function generateRefCode(name: string) {
   const clean = name.replace(/\s+/g, "").toUpperCase().slice(0, 4) || "USER";
   return `${clean}${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const referrerCode = (url.searchParams.get("referrerCode") || "").trim().toUpperCase();
+    if (!referrerCode) {
+      return NextResponse.json({ error: "Referrer code is required" }, { status: 400 });
+    }
+
+    const db = getDb();
+    const referrer = await db.user.findUnique({
+      where: { referrerCode },
+      select: { username: true, status: true },
+    });
+
+    if (!referrer || referrer.status === "inactive") {
+      return NextResponse.json({ error: "Referrer not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ fullName: referrer.username });
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch referrer" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -48,6 +74,7 @@ export async function POST(req: Request) {
         await db.user.create({
           data: {
             username: "Admin",
+            country: "Pakistan",
             email: COMPANY_ADMIN_EMAIL,
             passwordHash: adminPasswordHash,
             walletAddress: adminWalletPlaceholder,
@@ -63,25 +90,67 @@ export async function POST(req: Request) {
     }
     const ref = payload.referrerCode?.trim().toUpperCase() ?? "";
     const parentByRef = ref
-      ? await db.user.findUnique({ where: { referrerCode: ref }, select: { id: true } })
+      ? await db.user.findUnique({ where: { referrerCode: ref }, select: { id: true, status: true } })
       : null;
     if (!allowBootstrap && ref && !parentByRef) {
       return NextResponse.json({ error: "Invalid referrerCode" }, { status: 400 });
     }
 
     const company = !allowBootstrap
-      ? await db.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } })
+      ? await db.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true, status: true } })
       : null;
     const parent = allowBootstrap ? null : parentByRef ?? company;
     if (!allowBootstrap && !parent) {
       return NextResponse.json({ error: "Company referrer not found" }, { status: 500 });
     }
 
-    let refCode = generateRefCode(payload.username);
+    const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
+    if (!allowBootstrap && parentByRef && parentByRef.status !== "admin") {
+      const parentVerified = await db.deposit.findFirst({
+        where: { userId: parentByRef.id, status: "confirmed" },
+        select: { id: true },
+      });
+      if (!parentVerified) {
+        return NextResponse.json({ error: "Referrer not verified yet" }, { status: 400 });
+      }
+      const nowMs = Date.now();
+      const direct = await db.user.findMany({
+        where: { referredById: parentByRef.id, status: { not: "inactive" } },
+        select: { id: true, createdAt: true, status: true },
+      });
+
+      let inUse = 0;
+      const deactivateIds: string[] = [];
+      for (const child of direct) {
+        if (child.status === "inactive") continue;
+        const expiresAt = new Date(child.createdAt.getTime() + REFERRAL_WINDOW_MS);
+        const verified = await db.deposit.findFirst({
+          where: { userId: child.id, status: "confirmed", createdAt: { lte: expiresAt } },
+          select: { id: true },
+        });
+        if (verified) {
+          inUse += 1;
+          continue;
+        }
+        if (nowMs > expiresAt.getTime()) {
+          deactivateIds.push(child.id);
+          continue;
+        }
+        inUse += 1;
+      }
+      if (deactivateIds.length > 0) {
+        await db.user.updateMany({ where: { id: { in: deactivateIds } }, data: { status: "inactive" } });
+      }
+      if (inUse >= 2) {
+        return NextResponse.json({ error: "Referrer quota reached (2/2)" }, { status: 400 });
+      }
+    }
+
+    let refCode = generateRefCode(payload.fullName);
     for (let i = 0; i < 5; i += 1) {
       const exists = await db.user.findUnique({ where: { referrerCode: refCode }, select: { id: true } });
       if (!exists) break;
-      refCode = generateRefCode(payload.username);
+      refCode = generateRefCode(payload.fullName);
     }
     if (allowBootstrap) {
       const exists = await db.user.findUnique({ where: { referrerCode: COMPANY_REF_CODE }, select: { id: true } });
@@ -98,7 +167,8 @@ export async function POST(req: Request) {
 
     const user = await db.user.create({
       data: {
-        username: payload.username.trim(),
+        username: payload.fullName.trim(),
+        country: payload.country.trim(),
         email: normalizedEmail,
         passwordHash,
         walletAddress: walletPlaceholder,

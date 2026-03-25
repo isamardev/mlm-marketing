@@ -1,13 +1,211 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { FaUser } from "react-icons/fa";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
 
-export default function Home() {
+const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
+const COUNTRIES = [
+  "Afghanistan",
+  "Albania",
+  "Algeria",
+  "Andorra",
+  "Angola",
+  "Antigua and Barbuda",
+  "Argentina",
+  "Armenia",
+  "Australia",
+  "Austria",
+  "Azerbaijan",
+  "Bahamas",
+  "Bahrain",
+  "Bangladesh",
+  "Barbados",
+  "Belarus",
+  "Belgium",
+  "Belize",
+  "Benin",
+  "Bhutan",
+  "Bolivia",
+  "Bosnia and Herzegovina",
+  "Botswana",
+  "Brazil",
+  "Brunei",
+  "Bulgaria",
+  "Burkina Faso",
+  "Burundi",
+  "Cabo Verde",
+  "Cambodia",
+  "Cameroon",
+  "Canada",
+  "Central African Republic",
+  "Chad",
+  "Chile",
+  "China",
+  "Colombia",
+  "Comoros",
+  "Congo",
+  "Costa Rica",
+  "Croatia",
+  "Cuba",
+  "Cyprus",
+  "Czech Republic",
+  "Denmark",
+  "Djibouti",
+  "Dominica",
+  "Dominican Republic",
+  "Ecuador",
+  "Egypt",
+  "El Salvador",
+  "Equatorial Guinea",
+  "Eritrea",
+  "Estonia",
+  "Eswatini",
+  "Ethiopia",
+  "Fiji",
+  "Finland",
+  "France",
+  "Gabon",
+  "Gambia",
+  "Georgia",
+  "Germany",
+  "Ghana",
+  "Greece",
+  "Grenada",
+  "Guatemala",
+  "Guinea",
+  "Guinea-Bissau",
+  "Guyana",
+  "Haiti",
+  "Honduras",
+  "Hungary",
+  "Iceland",
+  "India",
+  "Indonesia",
+  "Iran",
+  "Iraq",
+  "Ireland",
+  "Israel",
+  "Italy",
+  "Jamaica",
+  "Japan",
+  "Jordan",
+  "Kazakhstan",
+  "Kenya",
+  "Kiribati",
+  "Kuwait",
+  "Kyrgyzstan",
+  "Laos",
+  "Latvia",
+  "Lebanon",
+  "Lesotho",
+  "Liberia",
+  "Libya",
+  "Liechtenstein",
+  "Lithuania",
+  "Luxembourg",
+  "Madagascar",
+  "Malawi",
+  "Malaysia",
+  "Maldives",
+  "Mali",
+  "Malta",
+  "Marshall Islands",
+  "Mauritania",
+  "Mauritius",
+  "Mexico",
+  "Micronesia",
+  "Moldova",
+  "Monaco",
+  "Mongolia",
+  "Montenegro",
+  "Morocco",
+  "Mozambique",
+  "Myanmar",
+  "Namibia",
+  "Nauru",
+  "Nepal",
+  "Netherlands",
+  "New Zealand",
+  "Nicaragua",
+  "Niger",
+  "Nigeria",
+  "North Korea",
+  "North Macedonia",
+  "Norway",
+  "Oman",
+  "Pakistan",
+  "Palau",
+  "Panama",
+  "Papua New Guinea",
+  "Paraguay",
+  "Peru",
+  "Philippines",
+  "Poland",
+  "Portugal",
+  "Qatar",
+  "Romania",
+  "Russia",
+  "Rwanda",
+  "Saint Kitts and Nevis",
+  "Saint Lucia",
+  "Saint Vincent and the Grenadines",
+  "Samoa",
+  "San Marino",
+  "Sao Tome and Principe",
+  "Saudi Arabia",
+  "Senegal",
+  "Serbia",
+  "Seychelles",
+  "Sierra Leone",
+  "Singapore",
+  "Slovakia",
+  "Slovenia",
+  "Solomon Islands",
+  "Somalia",
+  "South Africa",
+  "South Korea",
+  "South Sudan",
+  "Spain",
+  "Sri Lanka",
+  "Sudan",
+  "Suriname",
+  "Sweden",
+  "Switzerland",
+  "Syria",
+  "Taiwan",
+  "Tajikistan",
+  "Tanzania",
+  "Thailand",
+  "Timor-Leste",
+  "Togo",
+  "Tonga",
+  "Trinidad and Tobago",
+  "Tunisia",
+  "Turkey",
+  "Turkmenistan",
+  "Tuvalu",
+  "Uganda",
+  "Ukraine",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States",
+  "Uruguay",
+  "Uzbekistan",
+  "Vanuatu",
+  "Vatican City",
+  "Venezuela",
+  "Vietnam",
+  "Yemen",
+  "Zambia",
+  "Zimbabwe",
+];
+
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasRefParam = Boolean((searchParams.get("ref") ?? "").trim());
   const { data: session } = useSession();
   const [level, setLevel] = useState<number>(3);
   const [authOpen, setAuthOpen] = useState(false);
@@ -21,14 +219,18 @@ export default function Home() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [toastMessage, setToastMessage] = useState("");
   const [fullName, setFullName] = useState("");
+  const [country, setCountry] = useState("");
   const [email, setEmail] = useState("");
-  const [walletAddress, setWalletAddress] = useState("");
   const [referrerCode, setReferrerCode] = useState("");
-  const [hasRefParam, setHasRefParam] = useState(false);
+  const [referrerName, setReferrerName] = useState("");
+  const [referrerLookupLoading, setReferrerLookupLoading] = useState(false);
+  const [referrerLookupMessage, setReferrerLookupMessage] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [showGrid, setShowGrid] = useState(false);
+  const blockedNoticeHandledRef = useRef(false);
   const maxLevel = 33;
   const newAtLevel = (n: number) => Math.pow(2, n - 1);
   const totalAtLevel = (n: number) => Math.pow(2, n) - 1;
@@ -79,10 +281,60 @@ export default function Home() {
 
   useEffect(() => {
     const ref = (searchParams.get("ref") ?? "").trim();
-    setHasRefParam(!!ref);
     if (ref) {
-      setReferrerCode(ref);
+      setReferrerCode(ref.toUpperCase());
+      return;
     }
+    setReferrerCode("");
+    setReferrerName("");
+    setReferrerLookupMessage("");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (authMode !== "signup" || !hasRefParam) return;
+    const code = referrerCode.trim().toUpperCase();
+    if (!code) {
+      setReferrerName("");
+      setReferrerLookupMessage("");
+      setReferrerLookupLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setReferrerLookupLoading(true);
+      setReferrerLookupMessage("");
+      try {
+        const res = await fetch(`/api/auth/register?referrerCode=${encodeURIComponent(code)}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as any;
+        if (!res.ok) {
+          setReferrerName("");
+          setReferrerLookupMessage(typeof data?.error === "string" ? data.error : "Referrer not found");
+          return;
+        }
+        setReferrerName(typeof data?.fullName === "string" ? data.fullName : "");
+      } catch {
+        setReferrerName("");
+        setReferrerLookupMessage("Referrer lookup failed");
+      } finally {
+        setReferrerLookupLoading(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [authMode, hasRefParam, referrerCode]);
+
+  useEffect(() => {
+    const blocked = (searchParams.get("blocked") ?? "").trim();
+    if (blocked !== "1") {
+      blockedNoticeHandledRef.current = false;
+      return;
+    }
+    if (blockedNoticeHandledRef.current) return;
+    blockedNoticeHandledRef.current = true;
+    setAuthMode("login");
+    setAuthOpen(true);
+    setAuthMessage(BLOCKED_MESSAGE);
   }, [searchParams]);
 
   useEffect(() => {
@@ -109,6 +361,8 @@ export default function Home() {
     setOtpCode("");
     setAuthOpen(true);
   };
+
+  const isSignupForm = authMode === "signup" && signupStep === "form";
 
   return (
     <div className="min-h-screen bg-transparent font-sans text-foreground selection:bg-primary selection:text-white">
@@ -441,7 +695,7 @@ export default function Home() {
               {toastMessage}
             </div>
           ) : null}
-          <div className="relative w-full max-w-md rounded-3xl bg-card p-6 shadow-xl ring-1 ring-ring">
+          <div className={`relative w-full rounded-3xl bg-card p-6 shadow-xl ring-1 ring-ring ${isSignupForm ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-2xl font-semibold">
@@ -509,6 +763,18 @@ export default function Home() {
                       redirect: false,
                     });
                     if (result?.error) {
+                      try {
+                        const statusRes = await fetch("/api/auth/account-status", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email }),
+                        });
+                        const statusData = (await statusRes.json()) as any;
+                        if (statusData?.status === "blocked") {
+                          setAuthMessage(typeof statusData?.message === "string" ? statusData.message : BLOCKED_MESSAGE);
+                          return;
+                        }
+                      } catch {}
                       setAuthMessage("Invalid credentials");
                       return;
                     }
@@ -531,7 +797,7 @@ export default function Home() {
                       }
                       setForgotStep("otp");
                       setForgotDevOtp(otpData?.devOtp ?? "");
-                      setAuthMessage(otpData?.devOtp ? "OTP sent. Demo OTP is shown below." : "OTP sent to your email. Please enter the code.");
+                      setAuthMessage("OTP sent to your email. Please enter the code.");
                       return;
                     }
 
@@ -585,14 +851,24 @@ export default function Home() {
                         setAuthMessage("Passwords do not match");
                         return;
                       }
+                      if (!acceptedTerms) {
+                        setAuthMessage("Please agree to the terms and conditions");
+                        return;
+                      }
+                      if (hasRefParam && referrerCode.trim() && !referrerName.trim()) {
+                        setAuthMessage("Please enter a valid referral code");
+                        return;
+                      }
                       const res = await fetch("/api/auth/register", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          username: fullName,
+                          fullName,
+                          country,
                           email,
                           password,
-                          referrerCode: hasRefParam && referrerCode.trim() ? referrerCode.trim() : undefined,
+                          referrerCode: hasRefParam && referrerCode.trim() ? referrerCode.trim().toUpperCase() : undefined,
+                          acceptedTerms,
                         }),
                       });
                       const data = (await res.json()) as any;
@@ -607,7 +883,7 @@ export default function Home() {
                       });
                       const otpData = (await otpRes.json()) as any;
                       setSignupStep("otp");
-                      setAuthMessage(otpData?.devOtp ? `OTP requested. Dev OTP: ${otpData.devOtp}` : "OTP requested. Please enter the code.");
+                      setAuthMessage("OTP sent to your email. Please enter the code.");
                       return;
                     }
 
@@ -634,21 +910,81 @@ export default function Home() {
                 }
               }}
             >
-              {authMode === "signup" ? (
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium text-foreground">Full name</span>
-                  <input
-                    required
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                    placeholder="Your name"
-                  />
-                </label>
+              {isSignupForm ? (
+                <>
+                  {hasRefParam ? (
+                    <>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-foreground">Referral code</span>
+                          <input
+                            type="text"
+                            value={referrerCode}
+                            readOnly
+                            className="h-11 w-full rounded-2xl bg-background px-4 text-sm uppercase text-foreground ring-1 ring-ring outline-none"
+                            placeholder="SAMAR786"
+                          />
+                        </label>
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-foreground">Referral name</span>
+                          <input
+                            type="text"
+                            value={referrerLookupLoading ? "Loading..." : referrerName}
+                            readOnly
+                            className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none"
+                            placeholder="Referral name"
+                          />
+                        </label>
+                      </div>
+                      {referrerLookupMessage ? <div className="text-xs text-red-500">{referrerLookupMessage}</div> : null}
+                    </>
+                  ) : null}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium text-foreground">Full name</span>
+                      <input
+                        required
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="Your full name"
+                      />
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium text-foreground">Email address</span>
+                      <input
+                        required
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="name@email.com"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium text-foreground">Country</span>
+                    <select
+                      required
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">Select country</option>
+                      {COUNTRIES.map((countryName) => (
+                        <option key={countryName} value={countryName}>
+                          {countryName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
               ) : null}
 
-              {(authMode === "login" || authMode === "signup" || (authMode === "forgot" && forgotStep === "email")) ? (
+              {(authMode === "login" || (authMode === "forgot" && forgotStep === "email")) ? (
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-foreground">Email</span>
                   <input
@@ -662,22 +998,7 @@ export default function Home() {
                 </label>
               ) : null}
 
-              {authMode === "signup" && hasRefParam ? (
-                <label className="grid gap-2">
-                  <span className="text-sm font-medium text-foreground">Referrer Code</span>
-                  <input
-                    type="text"
-                    value={referrerCode}
-                    onChange={(e) => setReferrerCode(e.target.value)}
-                    readOnly
-                    disabled
-                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                    placeholder="SAMAR786"
-                  />
-                </label>
-              ) : null}
-
-              {authMode !== "forgot" ? (
+              {(authMode === "login" || isSignupForm) ? (
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-foreground">Password</span>
                   <input
@@ -691,7 +1012,7 @@ export default function Home() {
                 </label>
               ) : null}
 
-              {authMode === "signup" ? (
+              {isSignupForm ? (
                 <label className="grid gap-2">
                   <span className="text-sm font-medium text-foreground">Confirm password</span>
                   <input
@@ -702,6 +1023,18 @@ export default function Home() {
                     className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                     placeholder="••••••••"
                   />
+                </label>
+              ) : null}
+
+              {isSignupForm ? (
+                <label className="flex items-start gap-3 rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-ring"
+                  />
+                  <span>I agree to the terms and conditions</span>
                 </label>
               ) : null}
 
@@ -761,7 +1094,7 @@ export default function Home() {
                 className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-60"
               >
                 {authMode === "login" ? "Login" : 
-                 authMode === "signup" ? (signupStep === "form" ? "Create account" : "Verify OTP") : 
+                 authMode === "signup" ? (signupStep === "form" ? "Create an account" : "Verify OTP") : 
                  forgotStep === "email" ? "Next" :
                  forgotStep === "otp" ? "Verify OTP" : "Update Password"}
               </button>
@@ -805,6 +1138,14 @@ export default function Home() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-transparent" />}>
+      <HomeContent />
+    </Suspense>
   );
 }
 

@@ -1,39 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useAccount, useReadContract, useSendTransaction } from "wagmi";
-import { encodeFunctionData, parseAbi, parseEther } from "viem";
-import { isAdminAddress, ADMIN_WALLET_ADDRESS } from "@/lib/admin";
-import ConnectWallet from "@/components/ConnectWallet";
-
-const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000";
-const CONTRACT_ABI = parseAbi([
-  "function getBalance() view returns (uint256)",
-  "function withdrawFees(address to) returns (bool)",
-]);
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 
 export default function AdminDashboardPage() {
-  const { address, isConnected } = useAccount();
-  const isAdmin = useMemo(() => isAdminAddress(address), [address]);
+  const { data: session, status } = useSession();
   const [users, setUsers] = useState<Array<{ id: string; username: string; email: string; walletAddress: string; status: string; downlineCount: number }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-
-  const { data: contractBalance } = useReadContract({
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    abi: CONTRACT_ABI,
-    functionName: "getBalance",
-    query: { enabled: isAdmin },
-  });
-
-  const { sendTransactionAsync } = useSendTransaction();
+  const isAdmin = status === "authenticated" && session?.user?.status === "admin";
 
   useEffect(() => {
     if (!isAdmin) return;
     const run = async () => {
       try {
         setLoadingUsers(true);
-        const url = `/api/admin-wallet/users?address=${encodeURIComponent(address || "")}`;
-        const res = await fetch(url);
+        const res = await fetch("/api/admin-wallet/users", { cache: "no-store" });
         if (!res.ok) {
           setUsers([]);
           return;
@@ -45,30 +28,21 @@ export default function AdminDashboardPage() {
       }
     };
     run();
-  }, [isAdmin, address]);
+  }, [isAdmin]);
 
-  const withdrawFees = async () => {
-    if (!isAdmin) return;
-    const data = encodeFunctionData({
-      abi: CONTRACT_ABI,
-      functionName: "withdrawFees",
-      args: [address as `0x${string}`],
-    });
-    await sendTransactionAsync({
-      to: CONTRACT_ADDRESS as `0x${string}`,
-      value: parseEther("0"),
-      data,
-    });
-  };
-
-  if (!isConnected || !isAdmin) {
+  if (!isAdmin) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center bg-neutral-950">
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 px-8 py-10 text-center text-neutral-300">
           <div className="text-xl font-semibold">Access Denied</div>
-          <div className="mt-2 text-sm">Only the Admin wallet can view this page.</div>
-          <div className="mt-6 flex items-center justify-center">
-            <ConnectWallet />
+          <div className="mt-2 text-sm">Only the admin panel can view this page.</div>
+          <div className="mt-6">
+            <Link
+              href="/admin"
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-primary px-4 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+            >
+              Open Admin Panel
+            </Link>
           </div>
         </div>
       </div>
@@ -81,23 +55,15 @@ export default function AdminDashboardPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-2xl font-bold">Command Center</div>
-            <div className="text-xs text-neutral-400">Admin Wallet: {ADMIN_WALLET_ADDRESS}</div>
+            <div className="text-xs text-neutral-400">Receiver Wallet: {RECEIVER_WALLET_ADDRESS}</div>
           </div>
-          <button
-            type="button"
-            onClick={withdrawFees}
-            className="inline-flex h-10 items-center justify-center rounded-2xl bg-primary px-4 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-60"
-          >
-            Withdraw Fees
-          </button>
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6">
-            <div className="text-sm text-neutral-400">Total Contract Balance</div>
-            <div className="mt-2 text-3xl font-semibold">
-              {contractBalance ? `${contractBalance.toString()} wei` : "—"}
-            </div>
+            <div className="text-sm text-neutral-400">Receiver Network</div>
+            <div className="mt-2 text-3xl font-semibold">{RECEIVER_WALLET_NETWORK}</div>
+            <div className="mt-2 text-xs text-neutral-500">Incoming {RECEIVER_WALLET_TOKEN} deposits are matched automatically by sender wallet address.</div>
           </div>
           <div className="md:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div className="mb-4 text-sm text-neutral-400">Users</div>

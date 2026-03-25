@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { isEmailConfigured, sendOtpEmail } from "@/lib/email";
 
 const schema = z.object({
   email: z.string().email().optional(),
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
     if (!user && parsed.data.purpose === "password_reset") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
+    if (!isEmailConfigured()) {
+      return NextResponse.json({ error: "Email service is not configured" }, { status: 500 });
+    }
 
     const otp = generateOtp();
     const codeHash = await bcrypt.hash(otp, 10);
@@ -46,9 +50,14 @@ export async function POST(req: Request) {
       },
     });
 
+    await sendOtpEmail({
+      to: email,
+      otp,
+      purpose: parsed.data.purpose,
+    });
+
     return NextResponse.json({
       success: true,
-      devOtp: process.env.NODE_ENV === "production" ? undefined : otp,
       expiresAt,
     });
   } catch (error) {

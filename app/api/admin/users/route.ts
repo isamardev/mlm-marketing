@@ -11,21 +11,22 @@ export async function GET() {
     }
 
     const db = getDb();
+    const users = await db.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        walletAddress: true,
+        referrerCode: true,
+        referredById: true,
+        balance: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-    const users = await db.$queryRaw<
-      Array<{
-        id: string;
-        username: string;
-        email: string;
-        walletAddress: string;
-        referrerCode: string;
-        referredById: string | null;
-        balance: unknown;
-        status: string;
-        createdAt: Date;
-        downlineCount: bigint | number;
-      }>
-    >(Prisma.sql`
+    const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
         SELECT u.id AS rootId, c.id AS nodeId, 1 AS depth
         FROM \`User\` u
@@ -36,20 +37,70 @@ export async function GET() {
         JOIN \`User\` c ON c.referredById = d.nodeId
         WHERE d.depth < 20
       )
-      SELECT 
-        u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, u.balance, u.status, u.createdAt,
-        COALESCE(cnt.downlineCount, 0) AS downlineCount
-      FROM \`User\` u
-      LEFT JOIN (
-        SELECT rootId, COUNT(*) AS downlineCount
-        FROM downline
-        GROUP BY rootId
-      ) cnt ON cnt.rootId = u.id
-      ORDER BY u.createdAt DESC
+      SELECT rootId, COUNT(*) AS downlineCount
+      FROM downline
+      GROUP BY rootId
     `);
 
-    return NextResponse.json({ users });
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
+    const ids = users.map((user) => user.id);
+    const deposits = ids.length
+      ? await db.deposit.findMany({
+          where: {
+            userId: { in: ids },
+            status: "confirmed",
+          },
+          select: {
+            userId: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : [];
+
+    const downlineMap = new Map(downlineRows.map((row) => [row.rootId, Number(row.downlineCount ?? 0)]));
+    const depositsByUser = new Map<string, Date[]>();
+    for (const deposit of deposits) {
+      const list = depositsByUser.get(deposit.userId) ?? [];
+      list.push(deposit.createdAt);
+      depositsByUser.set(deposit.userId, list);
+    }
+
+    const nowMs = Date.now();
+    const safe = users.map((user) => {
+      const createdAtMs = user.createdAt.getTime();
+      const expiresAtMs = createdAtMs + 24 * 60 * 60 * 1000;
+      const userDeposits = depositsByUser.get(user.id) ?? [];
+      const verified = user.referredById
+        ? userDeposits.some((createdAt) => createdAt.getTime() <= expiresAtMs)
+        : false;
+
+      let verifyStatus: string | null = null;
+      let secondsLeft = 0;
+
+      if (user.referredById) {
+        if (verified) {
+          verifyStatus = "verified";
+        } else if (nowMs < expiresAtMs) {
+          verifyStatus = "unverified";
+          secondsLeft = Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
+        } else {
+          verifyStatus = "expired";
+        }
+      }
+
+      return {
+        ...user,
+        balance: Number(user.balance ?? 0),
+        createdAt: user.createdAt.toISOString(),
+        downlineCount: downlineMap.get(user.id) ?? 0,
+        verifyStatus,
+        secondsLeft,
+      };
+    });
+
+    return NextResponse.json({ users: safe });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to fetch users";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, http, parseAbiItem } from "viem";
+import { createPublicClient, http, parseAbiItem, decodeEventLog } from "viem";
 import { bsc } from "viem/chains";
 import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
+import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
 import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 import { formatUnits } from "viem";
 
@@ -14,11 +14,9 @@ export async function GET(req: Request) {
     const userIdFilter = url.searchParams.get("userId") || "";
     const lookbackBlocks = Number(url.searchParams.get("lookback") || 500);
 
-    const envAdmin = String(process.env.ADMIN_WALLET_ADDRESS || "").toLowerCase();
-    const fallbackAdmin = String(ADMIN_FALLBACK || "").toLowerCase();
-    const ADMIN_WALLET_ADDRESS = (/^0x[a-fA-F0-9]{40}$/.test(envAdmin) ? envAdmin : fallbackAdmin);
-    if (!ADMIN_WALLET_ADDRESS || !/^0x[a-fA-F0-9]{40}$/.test(ADMIN_WALLET_ADDRESS)) {
-      return NextResponse.json({ error: "Admin wallet not configured" }, { status: 500 });
+    const receiverWalletAddress = getNormalizedReceiverWalletAddress();
+    if (!receiverWalletAddress || !/^0x[a-fA-F0-9]{40}$/.test(receiverWalletAddress)) {
+      return NextResponse.json({ error: "Receiver wallet not configured" }, { status: 500 });
     }
 
     const client = createPublicClient({ chain: bsc, transport: http() });
@@ -33,7 +31,7 @@ export async function GET(req: Request) {
       fromBlock,
       toBlock,
       event: transferEvent,
-      args: { to: ADMIN_WALLET_ADDRESS as `0x${string}` },
+      args: { to: receiverWalletAddress as `0x${string}` },
     } as any);
 
     const db = getDb();
@@ -66,11 +64,26 @@ export async function GET(req: Request) {
       const exists = await db.deposit.findUnique({ where: { txHash } });
       if (exists) continue;
 
-      const from = (lg.args?.from || "").toLowerCase();
-      const to = (lg.args?.to || "").toLowerCase();
-      if (to !== ADMIN_WALLET_ADDRESS) continue;
+      let from = "";
+      let to = "";
+      let value: bigint | null = null;
+      try {
+        const decoded = decodeEventLog({
+          abi: [transferEvent],
+          data: lg.data,
+          topics: lg.topics,
+        });
+        if (decoded.eventName === "Transfer") {
+          const args = decoded.args as { from: `0x${string}`; to: `0x${string}`; value: bigint };
+          from = (args.from || "").toLowerCase();
+          to = (args.to || "").toLowerCase();
+          value = args.value;
+        }
+      } catch {
+        continue;
+      }
+      if (!to || to !== receiverWalletAddress || value == null) continue;
 
-      const value = lg.args?.value as bigint;
       const amountNum = Number(formatUnits(value, decimals));
       if (!Number.isFinite(amountNum) || amountNum < 10) continue;
 

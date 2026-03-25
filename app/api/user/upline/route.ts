@@ -10,6 +10,12 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.user.status === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (session.user.status === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
 
     const db = getDb();
     const userId = session.user.id;

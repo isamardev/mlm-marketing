@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useEffect, type FormEvent } from "react";
+import { useCallback, useMemo, useState, useEffect, type FormEvent } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { FaUser } from "react-icons/fa";
@@ -13,6 +13,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
+  { key: "deposits", label: "Deposits" },
   { key: "levels", label: "Levels" },
   { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
@@ -234,6 +235,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<NavItem["key"]>("overview");
 
   const [stats, setStats] = useState<{ totalUsers: number; totalDeposits: number; systemBalance: number } | null>(null);
@@ -250,6 +252,11 @@ export default function AdminPage() {
   const [adminUiMsg, setAdminUiMsg] = useState("");
   const [pendingWithdrawals, setPendingWithdrawals] = useState<any[]>([]);
   const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [deposits, setDeposits] = useState<any[]>([]);
+  const [depositStatus, setDepositStatus] = useState<string>("all");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
 
   const activity = useMemo(
     () => [
@@ -266,6 +273,31 @@ export default function AdminPage() {
     setOrigin(o);
   }, []);
 
+  const fetchAdminUsers = useCallback(async () => {
+    setUsersLoading(true);
+    setUsersError("");
+    try {
+      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        setUsers([]);
+        setUsersError(typeof data?.error === "string" ? data.error : "Failed to load users");
+        return;
+      }
+      if (Array.isArray(data?.users)) {
+        setUsers(data.users);
+      } else {
+        setUsers([]);
+        setUsersError("No users data found");
+      }
+    } catch {
+      setUsers([]);
+      setUsersError("Failed to load users");
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!mobileNavOpen) return;
     const prevOverflow = document.body.style.overflow;
@@ -276,19 +308,17 @@ export default function AdminPage() {
   }, [mobileNavOpen]);
 
   useEffect(() => {
-    if (status === "loading") return;
+    if (status !== "authenticated") return;
     if (!session?.user?.id || session.user.status !== "admin") {
       return;
     }
     const load = async () => {
-      const [s, u, l, t] = await Promise.all([
+      const [s, l, t] = await Promise.all([
         fetch("/api/admin/stats", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/admin/users", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/settings", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/tree", { cache: "no-store" }).then((r) => r.json()),
       ]);
       if (typeof s?.totalUsers === "number") setStats(s);
-      if (Array.isArray(u?.users)) setUsers(u.users);
       if (Array.isArray(l?.levelPercentages) && l.levelPercentages.length === 20) {
         setLevels(l.levelPercentages.map((x: any) => Number(x)));
       }
@@ -298,20 +328,28 @@ export default function AdminPage() {
         const data = await res.json();
         if (res.ok) setPendingWithdrawals(data.items || []);
       } catch {}
+      try {
+        const res = await fetch("/api/admin/deposits", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok) setDeposits(data.items || []);
+      } catch {}
     };
     load().catch(() => setLevelsMsg("Failed to load admin data"));
   }, [router, session?.user?.id, session?.user?.status, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    if (active !== "users") return;
+    fetchAdminUsers().catch(() => undefined);
+  }, [active, fetchAdminUsers, session?.user?.id, session?.user?.status, status]);
 
   const initials = useMemo(() => {
     const email = session?.user?.email ?? "admin";
     return String(email).slice(0, 2).toUpperCase();
   }, [session?.user?.email]);
 
-  if (status === "loading") {
-    return <div className="min-h-screen bg-transparent" />;
-  }
-
-  if (status !== "loading" && (!session?.user?.id || session.user.status !== "admin")) {
+  if (status !== "authenticated" || !session?.user?.id || session.user.status !== "admin") {
     return <AdminLoginForm />;
   }
 
@@ -328,6 +366,15 @@ export default function AdminPage() {
             >
               ☰
             </button>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              className="hidden h-10 w-10 items-center justify-center rounded-xl bg-card shadow-sm ring-1 ring-ring hover:bg-muted lg:inline-flex"
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar"
+            >
+              {sidebarCollapsed ? "›" : "‹"}
+            </button>
               <div className="flex items-center gap-3">
                 <img src="/logo.svg" alt="Logo" className="h-8 w-auto rounded-md ring-1 ring-ring" />
               </div>
@@ -343,7 +390,8 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
+        <div className={`mt-6 grid gap-6 ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
+          {!sidebarCollapsed && (
           <aside className="hidden lg:block">
             <div className="rounded-3xl bg-card p-3 shadow-sm ring-1 ring-ring">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Navigation</div>
@@ -364,44 +412,62 @@ export default function AdminPage() {
               </div>
             </div>
           </aside>
+          )}
 
           <main className="space-y-6">
-            <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-sm text-subtext">Overview</div>
-                  <div className="mt-1 text-2xl font-semibold">System snapshot</div>
-                  <div className="mt-2 max-w-2xl text-sm text-subtext">
-                    Live admin APIs enabled: stats, settings, users, deposit verify, and payouts.
+            {active === "overview" ? (
+              <>
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-sm text-subtext">Overview</div>
+                      <div className="mt-1 text-2xl font-semibold">System snapshot</div>
+                      <div className="mt-2 max-w-2xl text-sm text-subtext">
+                        Live admin APIs enabled: stats, settings, users, deposit verify, and payouts.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => signOut({ callbackUrl: "/" })}
+                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted w-full sm:w-auto"
+                      >
+                        Logout
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActive("payouts")}
+                        className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
+                      >
+                        Verify Deposit
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
+                    <StatCard label="Total Deposits" value={String(stats?.totalDeposits ?? 0)} hint="Transaction type: deposit" />
+                    <StatCard label="System Balance" value={String(stats?.systemBalance ?? 0)} hint="Sum of balances" />
+                    <StatCard label="Levels" value="20" hint="Commission depth" />
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => signOut({ callbackUrl: "/" })}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted w-full sm:w-auto"
-                  >
-                    Logout
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActive("payouts")}
-                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
-                  >
-                    Verify Deposit
-                  </button>
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                  <div className="text-sm font-semibold">Recent Activity</div>
+                  <div className="mt-1 text-sm text-subtext">System events (preview)</div>
+                  <div className="mt-6 grid gap-3">
+                    {activity.map((a, i) => (
+                      <div key={i} className="rounded-2xl bg-muted p-3 sm:p-4 ring-1 ring-ring">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="text-sm text-foreground">{a.text}</div>
+                          <div className="text-xs text-subtext">{a.time}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>
+            ) : null}
 
-              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
-                <StatCard label="Total Deposits" value={String(stats?.totalDeposits ?? 0)} hint="Transaction type: deposit" />
-                <StatCard label="System Balance" value={String(stats?.systemBalance ?? 0)} hint="Sum of balances" />
-                <StatCard label="Levels" value="20" hint="Commission depth" />
-              </div>
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-2">
+            {active === "users" ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -409,6 +475,17 @@ export default function AdminPage() {
                     <div className="mt-1 text-sm text-subtext">Users with downline count (33 levels · payouts L1-20)</div>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={userStatusFilter}
+                      onChange={(e) => setUserStatusFilter(e.target.value)}
+                      className="h-10 rounded-2xl bg-background px-3 text-sm text-foreground ring-1 ring-ring"
+                    >
+                      <option value="all">All</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="admin">Admin</option>
+                    </select>
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -417,25 +494,38 @@ export default function AdminPage() {
                     />
                     <button
                       type="button"
-                      onClick={() => setActive("users")}
-                      className="inline-flex h-10 items-center justify-center rounded-2xl bg-muted px-4 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-secondary"
+                      onClick={() => {
+                        fetchAdminUsers().catch(() => undefined);
+                      }}
+                      className="inline-flex h-10 items-center justify-center rounded-2xl bg-card px-4 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
                     >
-                      View
+                      Refresh
                     </button>
                   </div>
                 </div>
-
+                {usersError ? (
+                  <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-red-500 ring-1 ring-ring">{usersError}</div>
+                ) : null}
                 <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring sm:overflow-visible">
                   <div className="min-w-[680px] sm:min-w-0">
-                    <div className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.8fr] gap-2 bg-muted px-3 sm:px-4 py-3 text-xs font-medium text-subtext">
+                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1fr] gap-2 bg-muted px-3 sm:px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Status</div>
+                      <div>Verify</div>
                       <div>Balance</div>
                       <div>Downline</div>
+                      <div>Action</div>
                     </div>
-                    <div className="max-h-[360px] overflow-y-auto sm:max-h-none sm:overflow-y-visible">
+                    <div className="max-h-[560px] overflow-y-auto sm:max-h-none sm:overflow-y-visible">
                       <div className="divide-y divide-[color:var(--ring)]">
+                        {usersLoading ? (
+                          <div className="px-4 py-6 text-center text-sm text-subtext">Loading users...</div>
+                        ) : null}
                         {users
+                          .filter((u) => {
+                            if (userStatusFilter === "all") return true;
+                            return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
+                          })
                           .filter((u) => {
                             if (!search.trim()) return true;
                             const s = search.trim().toLowerCase();
@@ -446,183 +536,289 @@ export default function AdminPage() {
                             );
                           })
                           .map((u) => (
-                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.8fr] gap-2 px-3 sm:px-4 py-4 text-sm">
-                            <div>
-                              <div className="font-medium text-foreground">{u.username}</div>
-                              <div className="text-xs text-subtext">{u.email}</div>
-                            </div>
-                            <div className="flex items-center">
-                              <span
-                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
-                                  u.status === "active" || u.status === "admin"
-                                    ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
-                                    : u.status === "inactive"
+                            <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1fr] gap-2 px-3 sm:px-4 py-4 text-sm">
+                              <div>
+                                <div className="font-medium text-foreground">{u.username}</div>
+                                <div className="text-xs text-subtext">{u.email}</div>
+                              </div>
+                              <div className="flex items-center">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
+                                    u.status === "active" || u.status === "admin"
+                                      ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                      : u.status === "inactive"
                                       ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
                                       : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
-                                }`}
-                              >
-                                {u.status}
-                              </span>
+                                  }`}
+                                >
+                                  {u.status}
+                                </span>
+                              </div>
+                              <div className="flex items-center">
+                                {u.verifyStatus === "verified" ? (
+                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]">
+                                    VERIFIED
+                                  </span>
+                                ) : u.verifyStatus === "unverified" ? (
+                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]">
+                                    UNVERIFIED{typeof u.secondsLeft === "number" && u.secondsLeft > 0 ? ` · ${Math.floor(u.secondsLeft / 3600)}h` : ""}
+                                  </span>
+                                ) : u.verifyStatus === "expired" ? (
+                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]">
+                                    EXPIRED
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-subtext">—</span>
+                                )}
+                              </div>
+                              <div className="text-subtext">{String(u.balance ?? 0)}</div>
+                              <div className="text-subtext">{String(u.downlineCount ?? 0)}</div>
+                              <div className="flex items-center gap-2">
+                                {u.status === "admin" ? (
+                                  <span className="text-xs text-subtext">Admin</span>
+                                ) : (
+                                  <>
+                                    {u.status !== "active" && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch("/api/admin/users/status", {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ id: u.id, status: "active" }),
+                                            });
+                                            const data = await res.json();
+                                            if (!res.ok) {
+                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                              return;
+                                            }
+                                            toast.success(u.status === "blocked" ? "User unblocked" : "User activated");
+                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "active" } : x)));
+                                          } catch {
+                                            toast.error("Update failed");
+                                          }
+                                        }}
+                                        className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1 text-xs text-white ring-1 ring-primary/20"
+                                      >
+                                        {u.status === "blocked" ? "Unblock" : "Activate"}
+                                      </button>
+                                    )}
+                                    {u.status !== "inactive" && u.status !== "admin" && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch("/api/admin/users/status", {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ id: u.id, status: "inactive" }),
+                                            });
+                                            const data = await res.json();
+                                            if (!res.ok) {
+                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                              return;
+                                            }
+                                            toast.success("User deactivated");
+                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "inactive" } : x)));
+                                          } catch {
+                                            toast.error("Update failed");
+                                          }
+                                        }}
+                                        className="inline-flex items-center justify-center rounded-full bg-card px-3 py-1 text-xs text-foreground ring-1 ring-ring"
+                                      >
+                                        Deactivate
+                                      </button>
+                                    )}
+                                    {u.status !== "blocked" && u.status !== "admin" && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch("/api/admin/users/status", {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ id: u.id, status: "blocked" }),
+                                            });
+                                            const data = await res.json();
+                                            if (!res.ok) {
+                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                              return;
+                                            }
+                                            toast.success("User blocked");
+                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "blocked" } : x)));
+                                          } catch {
+                                            toast.error("Update failed");
+                                          }
+                                        }}
+                                        className="inline-flex items-center justify-center rounded-full bg-red-600 px-3 py-1 text-xs text-white ring-1 ring-red-600/20"
+                                      >
+                                        Block
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-subtext">{String(u.balance ?? 0)}</div>
-                            <div className="text-subtext">{String(u.downlineCount ?? 0)}</div>
-                          </div>
-                        ))}
+                          ))}
+                        {!usersLoading &&
+                        users
+                          .filter((u) => {
+                            if (userStatusFilter === "all") return true;
+                            return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
+                          })
+                          .filter((u) => {
+                            if (!search.trim()) return true;
+                            const s = search.trim().toLowerCase();
+                            return (
+                              String(u.username ?? "").toLowerCase().includes(s) ||
+                              String(u.email ?? "").toLowerCase().includes(s) ||
+                              String(u.referrerCode ?? "").toLowerCase().includes(s)
+                            );
+                          }).length === 0 ? (
+                          <div className="px-4 py-6 text-center text-sm text-subtext">No users found</div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+            ) : null}
 
+            {active === "payouts" ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
-                <div className="text-sm font-semibold">Recent Activity</div>
-                <div className="mt-1 text-sm text-subtext">System events (preview)</div>
-                <div className="mt-6 grid gap-3">
-                  {activity.map((a, i) => (
-                    <div key={i} className="rounded-2xl bg-muted p-3 sm:p-4 ring-1 ring-ring">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="text-sm text-foreground">{a.text}</div>
-                        <div className="text-xs text-subtext">{a.time}</div>
-                      </div>
-                    </div>
+                <div className="text-sm font-semibold">Verify Deposit Hash</div>
+                <div className="mt-1 text-sm text-subtext">Admin-only: dedupe + optional BscScan verify + payout trigger</div>
+                <form
+                  className="mt-4 grid gap-3"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setPayoutMsg("");
+                    try {
+                      const res = await fetch("/api/admin/verify-hash", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          sourceUserId: payoutUserId,
+                          txHash: payoutHash,
+                          amount: Number(payoutAmount),
+                          chain: "BSC",
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setPayoutMsg(typeof data?.error === "string" ? data.error : "Verify failed");
+                        toast.error(typeof data?.error === "string" ? data.error : "Verify failed");
+                        return;
+                      }
+                      setPayoutMsg("Verified and payout processed");
+                      toast.success("Verified and payout processed");
+                    } catch {
+                      setPayoutMsg("Verify failed");
+                      toast.error("Verify failed");
+                    }
+                  }}
+                >
+                  <label className="grid gap-2">
+                    <span className="text-xs font-medium text-subtext">User ID</span>
+                    <input
+                      required
+                      value={payoutUserId}
+                      onChange={(e) => setPayoutUserId(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="cuid..."
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-xs font-medium text-subtext">Transaction Hash</span>
+                    <input
+                      required
+                      value={payoutHash}
+                      onChange={(e) => setPayoutHash(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="0x..."
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-xs font-medium text-subtext">Amount</span>
+                    <input
+                      required
+                      value={payoutAmount}
+                      onChange={(e) => setPayoutAmount(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="100"
+                    />
+                  </label>
+                  {payoutMsg ? <div className="rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{payoutMsg}</div> : null}
+                  <button
+                    type="submit"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
+                  >
+                    Verify + Payout
+                  </button>
+                </form>
+              </div>
+            ) : null}
+
+            {active === "settings" || active === "levels" ? (
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                <div className="text-sm font-semibold">Level Percentages (1–20)</div>
+                <div className="mt-2 text-sm text-subtext">Update commission settings</div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {levels.map((v, idx) => (
+                    <label key={idx} className="grid gap-2">
+                      <span className="text-xs font-medium text-subtext">Level {idx + 1}</span>
+                      <input
+                        value={String(v)}
+                        onChange={(e) => {
+                          const next = [...levels];
+                          next[idx] = Number(e.target.value);
+                          setLevels(next);
+                        }}
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="0"
+                      />
+                    </label>
                   ))}
                 </div>
-
-                <div className="mt-6 w-full max-w-full rounded-2xl bg-muted p-5 ring-1 ring-ring">
-                  {active === "payouts" ? (
-                    <>
-                      <div className="text-sm font-semibold">Verify Deposit Hash</div>
-                      <div className="mt-2 text-sm text-subtext">Admin-only: dedupe + optional BscScan verify + payout trigger</div>
-                      <form
-                        className="mt-4 grid gap-3"
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          setPayoutMsg("");
-                          try {
-                            const res = await fetch("/api/admin/verify-hash", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                sourceUserId: payoutUserId,
-                                txHash: payoutHash,
-                                amount: Number(payoutAmount),
-                                chain: "BSC",
-                              }),
-                            });
-                            const data = await res.json();
-                            if (!res.ok) {
-                              setPayoutMsg(typeof data?.error === "string" ? data.error : "Verify failed");
-                              toast.error(typeof data?.error === "string" ? data.error : "Verify failed");
-                              return;
-                            }
-                            setPayoutMsg("Verified and payout processed");
-                            toast.success("Verified and payout processed");
-                          } catch {
-                            setPayoutMsg("Verify failed");
-                            toast.error("Verify failed");
-                          }
-                        }}
-                      >
-                        <label className="grid gap-2">
-                          <span className="text-xs font-medium text-subtext">User ID</span>
-                          <input
-                            required
-                            value={payoutUserId}
-                            onChange={(e) => setPayoutUserId(e.target.value)}
-                            className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                            placeholder="cuid..."
-                          />
-                        </label>
-                        <label className="grid gap-2">
-                          <span className="text-xs font-medium text-subtext">Transaction Hash</span>
-                          <input
-                            required
-                            value={payoutHash}
-                            onChange={(e) => setPayoutHash(e.target.value)}
-                            className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                            placeholder="0x..."
-                          />
-                        </label>
-                        <label className="grid gap-2">
-                          <span className="text-xs font-medium text-subtext">Amount</span>
-                          <input
-                            required
-                            value={payoutAmount}
-                            onChange={(e) => setPayoutAmount(e.target.value)}
-                            className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                            placeholder="100"
-                          />
-                        </label>
-                        {payoutMsg ? <div className="rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{payoutMsg}</div> : null}
-                        <button
-                          type="submit"
-                          className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
-                        >
-                          Verify + Payout
-                        </button>
-                      </form>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-sm font-semibold">Level Percentages (1–20)</div>
-                      <div className="mt-2 text-sm text-subtext">Update commission settings</div>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {levels.map((v, idx) => (
-                          <label key={idx} className="grid gap-2">
-                            <span className="text-xs font-medium text-subtext">Level {idx + 1}</span>
-                            <input
-                              value={String(v)}
-                              onChange={(e) => {
-                                const next = [...levels];
-                                next[idx] = Number(e.target.value);
-                                setLevels(next);
-                              }}
-                              className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                              placeholder="0"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                      {levelsMsg ? <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{levelsMsg}</div> : null}
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => setActive("levels")}
-                          className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-background w-full"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setLevelsMsg("");
-                            try {
-                              const res = await fetch("/api/admin/settings", {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ levelPercentages: levels }),
-                              });
-                              const data = await res.json();
-                              if (!res.ok) {
-                                setLevelsMsg(typeof data?.error === "string" ? data.error : "Save failed");
-                                return;
-                              }
-                              setLevelsMsg("Saved");
-                            } catch {
-                              setLevelsMsg("Save failed");
-                            }
-                          }}
-                          className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
-                        >
-                          Save Changes
-                        </button>
-                      </div>
-                    </>
-                  )}
+                {levelsMsg ? <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{levelsMsg}</div> : null}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setActive("levels")}
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-background w-full"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setLevelsMsg("");
+                      try {
+                        const res = await fetch("/api/admin/settings", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ levelPercentages: levels }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setLevelsMsg(typeof data?.error === "string" ? data.error : "Save failed");
+                          return;
+                        }
+                        setLevelsMsg("Saved");
+                      } catch {
+                        setLevelsMsg("Save failed");
+                      }
+                    }}
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
+                  >
+                    Save Changes
+                  </button>
                 </div>
               </div>
+            ) : null}
 
-              {active === "withdrawals" ? (
+            {active === "withdrawals" ? (
                 <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -645,7 +841,7 @@ export default function AdminPage() {
                   </div>
                   {withdrawMsg ? <div className="mt-3 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{withdrawMsg}</div> : null}
                   <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-ring">
-                    <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                    <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Amount</div>
                       <div>Address</div>
@@ -653,8 +849,11 @@ export default function AdminPage() {
                     </div>
                     <div className="divide-y divide-[color:var(--ring)]">
                       {pendingWithdrawals.map((w) => (
-                        <div key={w.id} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-2 px-4 py-4 text-sm">
-                          <div className="text-foreground">{w.userId}</div>
+                        <div key={w.id} className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 px-4 py-4 text-sm">
+                          <div className="text-foreground">
+                            <div className="font-medium">{w.user?.username ?? w.userId}</div>
+                            <div className="text-xs text-subtext">{w.user?.email ?? "-"}</div>
+                          </div>
                           <div className="text-foreground">{String(w.amount)}</div>
                           <div className="text-subtext">{w.address}</div>
                           <div className="flex items-center gap-2">
@@ -723,9 +922,87 @@ export default function AdminPage() {
                   </div>
                 </div>
               ) : null}
-            </div>
 
-            {adminTreeNodes ? (
+            {active === "deposits" ? (
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">Deposits</div>
+                      <div className="mt-1 text-sm text-subtext">Latest deposit records</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={depositStatus}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          setDepositStatus(val);
+                          try {
+                            const q = val === "all" ? "" : `?status=${encodeURIComponent(val)}`;
+                            const res = await fetch(`/api/admin/deposits${q}`, { cache: "no-store" });
+                            const data = await res.json();
+                            if (res.ok) setDeposits(data.items || []);
+                          } catch {}
+                        }}
+                        className="h-10 rounded-2xl bg-background px-3 text-sm text-foreground ring-1 ring-ring"
+                      >
+                        <option value="all">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const q = depositStatus === "all" ? "" : `?status=${encodeURIComponent(depositStatus)}`;
+                            const res = await fetch(`/api/admin/deposits${q}`, { cache: "no-store" });
+                            const data = await res.json();
+                            if (res.ok) setDeposits(data.items || []);
+                          } catch {}
+                        }}
+                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-ring">
+                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                      <div>Hash</div>
+                      <div>User</div>
+                      <div>Amount</div>
+                      <div>Status</div>
+                    </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {deposits.map((d) => (
+                        <div key={d.id} className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
+                          <div className="truncate">{d.txHash}</div>
+                          <div className="truncate">{d.user?.username ?? d.userId}</div>
+                          <div className="font-medium text-foreground">{String(d.amount)}</div>
+                          <div className={`text-xs`}>
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
+                                d.status === "confirmed"
+                                  ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                  : d.status === "pending"
+                                  ? "bg-[rgba(255,193,7,0.10)] text-foreground ring-[rgba(255,193,7,0.35)]"
+                                  : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
+                              }`}
+                            >
+                              {d.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {deposits.length === 0 && (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No deposits</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+            {active === "overview" && adminTreeNodes ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -755,7 +1032,7 @@ export default function AdminPage() {
                     <div className="mt-4 rounded-2xl bg-muted p-4 text-xs text-subtext ring-1 ring-ring">{adminUiMsg}</div>
                   ) : null}
                 </div>
-              </div>
+                </div>
             ) : null}
           </main>
         </div>

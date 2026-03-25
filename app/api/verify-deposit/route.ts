@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
 import { parseUnits } from "viem";
-import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
+import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
  
  export async function POST(req: Request) {
    try {
@@ -19,11 +19,9 @@ import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
        return NextResponse.json({ error: "transactionHash, amount, userId required" }, { status: 400 });
      }
  
-    const envAdmin = String(process.env.ADMIN_WALLET_ADDRESS || "").toLowerCase();
-    const fallbackAdmin = String(ADMIN_FALLBACK || "").toLowerCase();
-    const ADMIN_WALLET_ADDRESS = (/^0x[a-fA-F0-9]{40}$/.test(envAdmin) ? envAdmin : fallbackAdmin);
-    if (!ADMIN_WALLET_ADDRESS || !/^0x[a-fA-F0-9]{40}$/.test(ADMIN_WALLET_ADDRESS)) {
-      return NextResponse.json({ error: "Admin wallet not configured" }, { status: 500 });
+    const receiverWalletAddress = getNormalizedReceiverWalletAddress();
+    if (!receiverWalletAddress || !/^0x[a-fA-F0-9]{40}$/.test(receiverWalletAddress)) {
+      return NextResponse.json({ error: "Receiver wallet not configured" }, { status: 500 });
     }
  
      const client = createPublicClient({
@@ -65,7 +63,7 @@ import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
          });
          if (decoded.eventName === "Transfer") {
            const args = decoded.args as { from: `0x${string}`; to: `0x${string}`; value: bigint };
-           if ((args.to || "").toLowerCase() === ADMIN_WALLET_ADDRESS) {
+           if ((args.to || "").toLowerCase() === receiverWalletAddress) {
              matchedLog = args;
              break;
            }
@@ -105,9 +103,9 @@ import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
        return NextResponse.json({ error: "Amount mismatch" }, { status: 400 });
      }
  
-    const db = getDb();
-    // Double-spend protection using Deposit unique txHash
-    const existing = await db.deposit.findUnique({ where: { txHash: transactionHash } });
+   const db = getDb();
+   // Double-spend protection using Deposit unique txHash
+   const existing = await db.deposit.findUnique({ where: { txHash: transactionHash } });
     if (existing && existing.status === "confirmed") {
       return NextResponse.json({ error: "Transaction already processed" }, { status: 409 });
     }
@@ -126,11 +124,6 @@ import { ADMIN_WALLET_ADDRESS as ADMIN_FALLBACK } from "@/lib/admin";
           },
           select: { id: true },
         });
-    // Increment user balance
-    await db.user.update({
-      where: { id: userId },
-      data: { balance: { increment: new Prisma.Decimal(amount.toFixed(2)) } },
-    });
  
      // Trigger commission distribution
      const payout = await runFixedPayoutEngine({

@@ -9,6 +9,12 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.user.status === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (session.user.status === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
 
     const db = getDb();
     const userId = session.user.id;
@@ -17,12 +23,12 @@ export async function GET() {
       WITH RECURSIVE downline AS (
         SELECT id, referredById, 1 AS depth
         FROM \`User\`
-        WHERE referredById = ${userId}
+        WHERE referredById = ${userId} AND status <> 'inactive'
         UNION ALL
         SELECT u.id, u.referredById, d.depth + 1
         FROM \`User\` u
         JOIN downline d ON u.referredById = d.id
-        WHERE d.depth < 20
+        WHERE d.depth < 20 AND u.status <> 'inactive'
       )
       SELECT depth AS level, COUNT(*) AS count
       FROM downline
@@ -43,4 +49,3 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch referral stats" }, { status: 500 });
   }
 }
-
