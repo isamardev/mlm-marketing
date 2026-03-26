@@ -64,7 +64,10 @@ export async function POST(req: Request) {
     if (parsed.data.purpose === "registration") {
       await db.user.updateMany({
         where: { email },
-        data: { emailVerifiedAt: new Date() },
+        data: { 
+          emailVerifiedAt: new Date(),
+          status: "active" 
+        },
       });
     }
 

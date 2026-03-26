@@ -165,6 +165,7 @@ export async function POST(req: Request) {
     // Generate unique placeholder for walletAddress since it has @unique constraint
     const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Set status to inactive until OTP is verified
     const user = await db.user.create({
       data: {
         username: payload.fullName.trim(),
@@ -175,7 +176,8 @@ export async function POST(req: Request) {
         referrerCode: refCode,
         referredById: parent?.id ?? null,
         balance: 0,
-        status: allowBootstrap ? "admin" : "active",
+        status: allowBootstrap ? "admin" : "inactive",
+        emailVerifiedAt: null,
       },
       select: { id: true, username: true, email: true, referrerCode: true, referredById: true },
     });
