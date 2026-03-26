@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run db:generate && next dev",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push --skip-generate",
-    "dev:db": "npm run db:generate && npm run db:push && next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
+  "dev": "npm run db:generate && next dev",
+  "db:generate": "prisma generate",
+  "db:push": "prisma db push --skip-generate",
+  "dev:db": "npm run db:generate && npm run db:push && next dev",
+  "build": "prisma generate && next build",  
+  "start": "next start",
+  "lint": "eslint"
+},
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@rainbow-me/rainbowkit": "^2.2.10",
