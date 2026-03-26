@@ -238,7 +238,13 @@ export default function AdminPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<NavItem["key"]>("overview");
 
-  const [stats, setStats] = useState<{ totalUsers: number; totalDeposits: number; systemBalance: number } | null>(null);
+  const [stats, setStats] = useState<{
+    totalUsers: number;
+    totalDeposits: number;
+    systemBalance: number;
+    availableBalance: number;
+    todayEarning: number;
+  } | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [levels, setLevels] = useState<number[]>(Array.from({ length: 20 }, () => 0));
@@ -348,6 +354,13 @@ export default function AdminPage() {
     const email = session?.user?.email ?? "admin";
     return String(email).slice(0, 2).toUpperCase();
   }, [session?.user?.email]);
+  const toUSD = useCallback(
+    (n: number) =>
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
+        Number.isFinite(n) ? n : 0,
+      ),
+    [],
+  );
 
   if (status !== "authenticated" || !session?.user?.id || session.user.status !== "admin") {
     return <AdminLoginForm />;
@@ -443,10 +456,12 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                     <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
-                    <StatCard label="Total Deposits" value={String(stats?.totalDeposits ?? 0)} hint="Transaction type: deposit" />
-                    <StatCard label="System Balance" value={String(stats?.systemBalance ?? 0)} hint="Sum of balances" />
+                    <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} hint="Transaction type: deposit" />
+                    <StatCard label="Available Balance" value={toUSD(Number(stats?.availableBalance ?? 0))} hint="Admin wallet" />
+                    <StatCard label="Today Earning" value={toUSD(Number(stats?.todayEarning ?? 0))} hint="Admin commissions today" />
+                    <StatCard label="System Balance" value={toUSD(Number(stats?.systemBalance ?? 0))} hint="Sum of balances" />
                     <StatCard label="Levels" value="20" hint="Commission depth" />
                   </div>
                 </div>

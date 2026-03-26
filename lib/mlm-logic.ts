@@ -117,7 +117,6 @@ export async function runFixedPayoutEngine(params: {
   const payouts: PayoutResult[] = [];
 
   await db.$transaction(async (tx) => {
-    // Create gross deposit record
     await tx.transaction.create({
       data: {
         userId: sourceUserId,
@@ -129,27 +128,43 @@ export async function runFixedPayoutEngine(params: {
       },
     });
 
-    const adminByStatus = await tx.user.findFirst({ where: { status: "admin" }, select: { id: true, email: true } });
-    const adminByEmail = adminByStatus ?? (await tx.user.findUnique({ where: { email: adminEmail }, select: { id: true, email: true } }));
-    const adminId = adminByEmail?.id || null;
+    const adminByStatus = await tx.user.findFirst({
+      where: { status: "admin" },
+      select: { id: true, email: true, username: true },
+    });
+    const adminByEmail =
+      adminByStatus ??
+      (await tx.user.findUnique({ where: { email: adminEmail }, select: { id: true, email: true, username: true } }));
+    const adminId = adminByEmail?.id ?? null;
+    if (!adminId) {
+      throw new Error("Admin user not found");
+    }
 
     const sourceUser = await tx.user.findUnique({
       where: { id: sourceUserId },
-      select: { id: true, referredById: true },
+      select: { id: true, referredById: true, username: true },
     });
     if (!sourceUser) {
       throw new Error("Source user not found");
     }
 
     let currentParentId = sourceUser.referredById;
+    let remainingAmount = Number(depositAmount.toFixed(2));
 
-    for (let level = 1; level <= 20; level += 1) {
-      let beneficiaryId = currentParentId || adminId;
-      if (!beneficiaryId) break;
+    for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
+      const beneficiaryId = currentParentId;
 
       await tx.user.update({
         where: { id: beneficiaryId },
         data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
+      });
+      await tx.notification.create({
+        data: {
+          userId: beneficiaryId,
+          type: "commission",
+          title: `L${level} Commission`,
+          message: `You received ${perLevel.toFixed(2)} from ${sourceUser.username}`,
+        },
       });
       await tx.transaction.create({
         data: {
@@ -162,8 +177,8 @@ export async function runFixedPayoutEngine(params: {
         },
       });
       payouts.push({ level, beneficiaryUserId: beneficiaryId, amount: perLevel });
+      remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
 
-      if (!currentParentId) continue;
       const parent = await tx.user.findUnique({
         where: { id: currentParentId },
         select: { referredById: true },
@@ -171,28 +186,30 @@ export async function runFixedPayoutEngine(params: {
       currentParentId = parent?.referredById ?? null;
     }
 
-    // Deduct commissions from depositor and credit net deposit
-    const totalCommission = Number((payouts.length * perLevel).toFixed(2));
-    if (depositAmount < totalCommission) {
-      throw new Error("Deposit less than required commissions");
-    }
-    const net = Number((depositAmount - totalCommission).toFixed(2));
-    if (net > 0) {
+    if (remainingAmount > 0) {
       await tx.user.update({
-        where: { id: sourceUserId },
-        data: { balance: { increment: new Prisma.Decimal(net.toFixed(2)) } },
+        where: { id: adminId },
+        data: { balance: { increment: new Prisma.Decimal(remainingAmount.toFixed(2)) } },
+      });
+      await tx.notification.create({
+        data: {
+          userId: adminId,
+          type: "commission",
+          title: "Admin Deposit Share",
+          message: `You received ${remainingAmount.toFixed(2)} from ${sourceUser.username}`,
+        },
+      });
+      await tx.transaction.create({
+        data: {
+          userId: adminId,
+          sourceUserId,
+          level: 0,
+          amount: new Prisma.Decimal(remainingAmount.toFixed(2)),
+          type: "commission",
+          note: `Admin share from ${sourceUserId}`,
+        },
       });
     }
-    await tx.transaction.create({
-      data: {
-        userId: sourceUserId,
-        sourceUserId,
-        level: 0,
-        amount: new Prisma.Decimal((-totalCommission).toFixed(2)),
-        type: "adjustment",
-        note: `Commission deduction (${payouts.length} levels)`,
-      },
-    });
   });
 
   return { sourceUserId, depositAmount, payouts };
