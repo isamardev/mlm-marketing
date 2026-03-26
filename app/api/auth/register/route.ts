@@ -161,11 +161,7 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 12);
-    
-    // Generate unique placeholder for walletAddress since it has @unique constraint
     const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Set status to inactive until OTP is verified
     const user = await db.user.create({
       data: {
         username: payload.fullName.trim(),

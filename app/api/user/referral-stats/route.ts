@@ -21,13 +21,13 @@ export async function GET() {
 
     const rows = await db.$queryRaw<Array<{ level: number; count: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
-        SELECT id, referredById, 1 AS depth
-        FROM \`User\`
-        WHERE referredById = ${userId} AND status <> 'inactive'
+        SELECT id, "referredById", 1 AS depth
+        FROM "User"
+        WHERE "referredById" = ${userId} AND status <> 'inactive'
         UNION ALL
-        SELECT u.id, u.referredById, d.depth + 1
-        FROM \`User\` u
-        JOIN downline d ON u.referredById = d.id
+        SELECT u.id, u."referredById", d.depth + 1
+        FROM "User" u
+        JOIN downline d ON u."referredById" = d.id
         WHERE d.depth < 20 AND u.status <> 'inactive'
       )
       SELECT depth AS level, COUNT(*) AS count

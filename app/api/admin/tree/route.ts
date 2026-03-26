@@ -52,13 +52,13 @@ export async function GET() {
       }>
     >(Prisma.sql`
       WITH RECURSIVE team AS (
-        SELECT id, username, email, walletAddress, referrerCode, referredById, 0 AS depth
-        FROM \`User\`
+        SELECT id, username, email, "walletAddress", "referrerCode", "referredById", 0 AS depth
+        FROM "User"
         WHERE id = ${admin.id}
         UNION ALL
-        SELECT u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, t.depth + 1 AS depth
-        FROM \`User\` u
-        JOIN team t ON u.referredById = t.id
+        SELECT u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", t.depth + 1 AS depth
+        FROM "User" u
+        JOIN team t ON u."referredById" = t.id
         WHERE t.depth < 20
       )
       SELECT * FROM team ORDER BY depth ASC

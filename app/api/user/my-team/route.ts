@@ -33,7 +33,6 @@ export async function GET() {
       where: { email: COMPANY_ADMIN_EMAIL },
       select: { id: true, username: true, email: true, walletAddress: true, referrerCode: true, referredById: true, status: true },
     });
-    // No hard failure if admin row missing — show user's own descendants
 
     const descendants = await db.$queryRaw<
       Array<{
@@ -49,29 +48,29 @@ export async function GET() {
       }>
     >(Prisma.sql`
       WITH RECURSIVE team AS (
-        SELECT id, username, email, walletAddress, referrerCode, referredById, createdAt, 0 AS depth
-        FROM \`User\`
+        SELECT id, username, email, "walletAddress", "referrerCode", "referredById", "createdAt", 0 AS depth
+        FROM "User"
         WHERE id = ${userId}
         UNION ALL
-        SELECT u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, u.createdAt, t.depth + 1 AS depth
-        FROM \`User\` u
-        JOIN team t ON u.referredById = t.id
+        SELECT u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", u."createdAt", t.depth + 1 AS depth
+        FROM "User" u
+        JOIN team t ON u."referredById" = t.id
         WHERE t.depth < 19
       ),
       first_deposits AS (
-        SELECT userId, MIN(createdAt) AS firstDepositAt
-        FROM \`Deposit\`
+        SELECT "userId", MIN("createdAt") AS "firstDepositAt"
+        FROM "Deposit"
         WHERE status = 'confirmed'
-        GROUP BY userId
+        GROUP BY "userId"
       )
-      SELECT 
-        t.id, t.username, t.email, t.walletAddress, t.referrerCode, t.referredById, t.createdAt, t.depth,
-        CASE 
-          WHEN fd.firstDepositAt IS NOT NULL AND fd.firstDepositAt <= DATE_ADD(t.createdAt, INTERVAL 24 HOUR) THEN 1
+      SELECT
+        t.id, t.username, t.email, t."walletAddress", t."referrerCode", t."referredById", t."createdAt", t.depth,
+        CASE
+          WHEN fd."firstDepositAt" IS NOT NULL AND fd."firstDepositAt" <= t."createdAt" + interval '24 hours' THEN 1
           ELSE 0
         END AS verified
       FROM team t
-      LEFT JOIN first_deposits fd ON fd.userId = t.id
+      LEFT JOIN first_deposits fd ON fd."userId" = t.id
       ORDER BY t.depth ASC
     `);
 

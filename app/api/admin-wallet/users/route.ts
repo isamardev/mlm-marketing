@@ -27,25 +27,25 @@ export async function GET() {
       }>
     >(Prisma.sql`
       WITH RECURSIVE downline AS (
-        SELECT u.id AS rootId, c.id AS nodeId, 1 AS depth
-        FROM \`User\` u
-        JOIN \`User\` c ON c.referredById = u.id
+        SELECT u.id AS "rootId", c.id AS "nodeId", 1 AS depth
+        FROM "User" u
+        JOIN "User" c ON c."referredById" = u.id
         UNION ALL
-        SELECT d.rootId, c.id AS nodeId, d.depth + 1
+        SELECT d."rootId", c.id AS "nodeId", d.depth + 1
         FROM downline d
-        JOIN \`User\` c ON c.referredById = d.nodeId
+        JOIN "User" c ON c."referredById" = d."nodeId"
         WHERE d.depth < 20
       )
-      SELECT 
-        u.id, u.username, u.email, u.walletAddress, u.referrerCode, u.referredById, u.balance, u.status, u.createdAt,
-        COALESCE(cnt.downlineCount, 0) AS downlineCount
-      FROM \`User\` u
+      SELECT
+        u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", u.balance, u.status, u."createdAt",
+        COALESCE(cnt."downlineCount", 0) AS "downlineCount"
+      FROM "User" u
       LEFT JOIN (
-        SELECT rootId, COUNT(*) AS downlineCount
+        SELECT "rootId", COUNT(*) AS "downlineCount"
         FROM downline
-        GROUP BY rootId
-      ) cnt ON cnt.rootId = u.id
-      ORDER BY u.createdAt DESC
+        GROUP BY "rootId"
+      ) cnt ON cnt."rootId" = u.id
+      ORDER BY u."createdAt" DESC
     `);
 
     return NextResponse.json({ users });

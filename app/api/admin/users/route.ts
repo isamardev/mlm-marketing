@@ -28,18 +28,18 @@ export async function GET() {
 
     const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
-        SELECT u.id AS rootId, c.id AS nodeId, 1 AS depth
-        FROM \`User\` u
-        JOIN \`User\` c ON c.referredById = u.id
+        SELECT u.id AS "rootId", c.id AS "nodeId", 1 AS depth
+        FROM "User" u
+        JOIN "User" c ON c."referredById" = u.id
         UNION ALL
-        SELECT d.rootId, c.id AS nodeId, d.depth + 1
+        SELECT d."rootId", c.id AS "nodeId", d.depth + 1
         FROM downline d
-        JOIN \`User\` c ON c.referredById = d.nodeId
+        JOIN "User" c ON c."referredById" = d."nodeId"
         WHERE d.depth < 20
       )
-      SELECT rootId, COUNT(*) AS downlineCount
+      SELECT "rootId", COUNT(*) AS "downlineCount"
       FROM downline
-      GROUP BY rootId
+      GROUP BY "rootId"
     `);
 
     const ids = users.map((user) => user.id);
