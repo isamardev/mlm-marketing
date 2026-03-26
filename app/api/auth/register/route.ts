@@ -193,7 +193,11 @@ export async function POST(req: Request) {
       },
       { status: 201 },
     );
-  } catch {
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Registration failed";
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === "production" ? "Registration failed" : message },
+      { status: 500 },
+    );
   }
 }
