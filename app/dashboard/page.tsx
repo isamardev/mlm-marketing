@@ -1399,7 +1399,7 @@ export default function UserDashboardPage() {
               <div className="text-xs text-subtext">Referral Link</div>
               {referralGate?.state === "unverified" ? (
                 <>
-                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
                     Verify your account to unlock
                   </div>
                   <button
@@ -1412,7 +1412,7 @@ export default function UserDashboardPage() {
                 </>
               ) : (
                 <>
-                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
                     {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
                   </div>
                   <button
@@ -1478,7 +1478,7 @@ export default function UserDashboardPage() {
                 </>
               ) : (
                 <>
-                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
                     {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
                   </div>
                   <button
@@ -2190,7 +2190,7 @@ export default function UserDashboardPage() {
             </div>
             <div className="px-4 pb-6">
               <div className="text-xs text-subtext">Referral Link</div>
-              <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+              <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
                 {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
               </div>
               <button
