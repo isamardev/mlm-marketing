@@ -523,16 +523,19 @@ export default function AdminPage() {
 
             {active === "users" ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <div className="text-sm font-semibold">Users</div>
-                    <div className="mt-1 text-sm text-subtext">Users with downline count (33 levels · payouts L1-20)</div>
+                    <div className="mt-1 text-xs text-subtext leading-relaxed sm:text-sm">
+                      Users with downline count <br className="sm:hidden" />
+                      (33 levels · payouts L1-20)
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={userStatusFilter}
                       onChange={(e) => setUserStatusFilter(e.target.value)}
-                      className="h-10 rounded-2xl bg-background px-3 text-sm text-foreground ring-1 ring-ring"
+                      className="h-9 rounded-xl bg-background px-3 text-xs text-foreground ring-1 ring-ring sm:h-10 sm:rounded-2xl sm:text-sm"
                     >
                       <option value="all">All</option>
                       <option value="active">Active</option>
@@ -543,7 +546,7 @@ export default function AdminPage() {
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="h-10 w-full sm:w-40 rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      className="h-9 w-full min-w-[120px] flex-1 rounded-xl bg-background px-4 text-xs text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 sm:h-10 sm:w-40 sm:rounded-2xl sm:text-sm"
                       placeholder="Search"
                     />
                     <button
@@ -551,7 +554,7 @@ export default function AdminPage() {
                       onClick={() => {
                         fetchAdminUsers().catch(() => undefined);
                       }}
-                      className="inline-flex h-10 items-center justify-center rounded-2xl bg-card px-4 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                      className="inline-flex h-9 items-center justify-center rounded-xl bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted sm:h-10 sm:rounded-2xl sm:text-sm"
                     >
                       Refresh
                     </button>
@@ -626,16 +629,18 @@ export default function AdminPage() {
                             </div>
                             <div className="text-subtext flex items-center">{String(u.balance ?? 0)}</div>
                             <div className="text-subtext flex items-center">{String(u.downlineCount ?? 0)}</div>
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => setEditingUser(u)}
-                                className="inline-flex items-center justify-center rounded-full bg-blue-600 px-3 py-1 text-xs text-white ring-1 ring-blue-600/20 hover:bg-blue-700 transition"
+                                title="Edit User"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600 ring-1 ring-blue-600/20 hover:bg-blue-600 hover:text-white transition"
                               >
-                                Edit
+                                ✎
                               </button>
                               <button
                                 type="button"
+                                title="Login as User"
                                 onClick={async () => {
                                   setConfirmModal({
                                     message: `You are about to login as ${u.username}. You will be logged out of the admin panel and redirected to the user dashboard.`,
@@ -651,17 +656,18 @@ export default function AdminPage() {
                                     },
                                   });
                                 }}
-                                className="inline-flex items-center justify-center rounded-full bg-green-600 px-3 py-1 text-xs text-white ring-1 ring-green-600/20 hover:bg-green-700 transition"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-green-600/10 text-green-600 ring-1 ring-green-600/20 hover:bg-green-600 hover:text-white transition"
                               >
-                                View
+                                👁
                               </button>
                               {u.status === "admin" ? (
-                                <span className="text-xs text-subtext">Admin</span>
+                                <span className="text-[10px] font-medium text-subtext uppercase tracking-wider px-2">Admin</span>
                               ) : (
                                 <>
                                   {u.status !== "active" && (
                                     <button
                                       type="button"
+                                      title={u.status === "blocked" ? "Unblock" : "Activate"}
                                       onClick={() => {
                                         const actionLabel = u.status === "blocked" ? "unblock" : "activate";
                                         setConfirmModal({
@@ -688,14 +694,15 @@ export default function AdminPage() {
                                           },
                                         });
                                       }}
-                                      className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1 text-xs text-white ring-1 ring-primary/20 hover:bg-primary/90 transition"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20 hover:bg-primary hover:text-white transition"
                                     >
-                                      {u.status === "blocked" ? "Unblock" : "Activate"}
+                                      ✓
                                     </button>
                                   )}
                                   {u.status !== "inactive" && u.status !== "admin" && (
                                     <button
                                       type="button"
+                                      title="Deactivate User"
                                       onClick={() => {
                                         setConfirmModal({
                                           message: `Are you sure you want to deactivate ${u.username}? They will not be able to perform some actions.`,
@@ -721,14 +728,15 @@ export default function AdminPage() {
                                           },
                                         });
                                       }}
-                                      className="inline-flex items-center justify-center rounded-full bg-card px-3 py-1 text-xs text-foreground ring-1 ring-ring hover:bg-muted transition"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground ring-1 ring-ring hover:bg-muted/80 transition"
                                     >
-                                      Deactivate
+                                      ⊘
                                     </button>
                                   )}
                                   {u.status !== "blocked" && u.status !== "admin" && (
                                     <button
                                       type="button"
+                                      title="Block User"
                                       onClick={() => {
                                         setConfirmModal({
                                           message: `Are you sure you want to block ${u.username}? This will completely restrict their access.`,
@@ -754,9 +762,9 @@ export default function AdminPage() {
                                           },
                                         });
                                       }}
-                                      className="inline-flex items-center justify-center rounded-full bg-red-600 px-3 py-1 text-xs text-white ring-1 ring-red-600/20 hover:bg-red-700 transition"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-600/10 text-red-600 ring-1 ring-red-600/20 hover:bg-red-600 hover:text-white transition"
                                     >
-                                      Block
+                                      ✕
                                     </button>
                                   )}
                                 </>
@@ -1102,12 +1110,15 @@ export default function AdminPage() {
 
             {active === "overview" && adminTreeNodes ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <div className="text-sm font-semibold">Admin Tree</div>
-                  <div className="mt-1 text-sm text-subtext">Company root with full downline (L1-33 · payouts L1-20)</div>
+                    <div className="mt-1 text-xs text-subtext leading-relaxed sm:text-sm">
+                      Company root with full downline <br className="sm:hidden" />
+                      (L1-33 · payouts L1-20)
+                    </div>
                   </div>
-                  <div className="text-xs text-subtext">{adminTreeNodes.length} nodes</div>
+                  <div className="text-xs font-medium text-primary sm:text-sm">{adminTreeNodes.length} nodes</div>
                 </div>
                 <div className="mt-6 max-h-[380px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="divide-y divide-[color:var(--ring)]">
