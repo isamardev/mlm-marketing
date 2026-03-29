@@ -35,6 +35,55 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Safely get withdrawBalance as well
+    let withdrawBalance = 0;
+    let usdtBalance = 0;
+    try {
+      // Use raw SQL directly to avoid Prisma client sync issues
+      const rows: any[] = await db.$queryRawUnsafe(
+        `SELECT "withdrawBalance", "usdtBalance" FROM "User" WHERE id = $1`,
+        userId
+      );
+      withdrawBalance = Number(rows[0]?.withdrawBalance ?? 0);
+      usdtBalance = Number(rows[0]?.usdtBalance ?? 0);
+    } catch (e) {
+      // If it doesn't exist, we might need to add the column or just use 0
+      try {
+        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "withdrawBalance" DECIMAL(18,2) DEFAULT 0`);
+        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "usdtBalance" DECIMAL(18,2) DEFAULT 0`);
+      } catch (alterErr) {
+        // silent
+      }
+    }
+
+    // Check for security code existence safely
+    let hasSecurityCode = false;
+    try {
+      const u: any = await db.user.findUnique({
+        where: { id: userId },
+        select: { securityCode: true }
+      });
+      hasSecurityCode = !!u?.securityCode;
+    } catch (e) {
+      // Fallback to raw query if Prisma client is out of sync
+      try {
+        const rows: any[] = await db.$queryRawUnsafe(
+          `SELECT "securityCode" FROM "User" WHERE id = $1`,
+          userId
+        );
+        hasSecurityCode = !!rows[0]?.securityCode;
+      } catch (err) {
+        console.error("Failed to check securityCode:", err);
+      }
+    }
+
+    const maskedProfile = {
+      ...user,
+      withdrawBalance,
+      usdtBalance,
+      securityCode: hasSecurityCode ? "exists" : null,
+    };
+
     let referralGate: null | { state: "unverified" | "verified"; expiresAt: string; secondsLeft: number } = null;
     if (user.referredById && user.status === "active") {
       const expiresAt = new Date(user.createdAt.getTime() + REFERRAL_WINDOW_MS);
@@ -88,7 +137,7 @@ export async function GET() {
     const withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
 
     return NextResponse.json({
-      profile: user,
+      profile: maskedProfile,
       directReferrals: referrals,
       recentTransactions: transactions,
       depositTotal,

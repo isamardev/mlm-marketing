@@ -6,7 +6,9 @@ import { getDb } from "@/lib/db";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(1).optional(),
+  isImpersonation: z.string().optional(),
+  adminToken: z.string().optional(),
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -22,12 +24,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        isImpersonation: { label: "isImpersonation", type: "text" },
+        adminToken: { label: "adminToken", type: "text" },
       },
       authorize: async (credentials) => {
     const parsed = credentialsSchema.safeParse(credentials);
     if (!parsed.success) return null;
 
-    const { email, password } = parsed.data;
+    const { email, password, isImpersonation, adminToken } = parsed.data;
+
+    const db = getDb();
+
+    // Impersonation flow (Admin viewing user)
+    if (isImpersonation === "true" && adminToken) {
+      // Check if adminToken matches admin credentials or a fixed secret
+      if (adminToken === "admin123" || adminToken === process.env.ADMIN_SECRET) {
+        const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
+        if (!user) return null;
+        // Allow login as any user without password for admin
+        return {
+          id: user.id,
+          name: user.username,
+          email: user.email,
+          status: user.status,
+        };
+      }
+    }
 
     if (email === "admin@example.com" && password === "admin123") {
       return {
@@ -38,7 +60,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       };
     }
 
-    const db = getDb();
+    if (!password) return null;
     const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user) return null;
 

@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db";
 
 const registerSchema = z.object({
   fullName: z.string().min(2).max(60),
+  phone: z.string().min(7).max(20),
   country: z.string().min(2).max(60),
   email: z.string().email(),
   password: z.string().min(6).max(100),
@@ -177,6 +178,17 @@ export async function POST(req: Request) {
       },
       select: { id: true, username: true, email: true, referrerCode: true, referredById: true },
     });
+
+    // Update phone number using raw SQL to avoid Prisma client sync issues
+    try {
+      await db.$executeRawUnsafe(
+        `UPDATE "User" SET phone = $1 WHERE id = $2`,
+        payload.phone.trim(),
+        user.id
+      );
+    } catch (e) {
+      console.error("Failed to update phone number:", e);
+    }
 
     return NextResponse.json(
       {

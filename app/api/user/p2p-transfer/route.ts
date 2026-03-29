@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 const schema = z.object({
   recipient: z.string().min(3),
   amount: z.number().positive(),
+  securityCode: z.string().min(1),
 });
 
 export async function POST(req: Request) {
@@ -15,13 +16,7 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.status === "inactive") {
-      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
-    }
-    if (session.user.status === "blocked") {
-      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
-    }
-
+    
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -30,8 +25,49 @@ export async function POST(req: Request) {
 
     const db = getDb();
     const senderId = session.user.id;
-    const amt = Number(parsed.data.amount.toFixed(2));
-    const key = String(parsed.data.recipient).trim();
+    const { amount, recipient: key, securityCode } = parsed.data;
+    const amt = Number(amount.toFixed(2));
+
+    const sender = await db.user.findUnique({ where: { id: senderId } });
+    if (!sender) {
+      return NextResponse.json({ error: "Sender not found" }, { status: 404 });
+    }
+
+    // Handle security code check with raw query if prisma client is outdated
+    let senderSecurityCode = (sender as any).securityCode;
+    if (senderSecurityCode === undefined) {
+      const rows: any[] = await db.$queryRawUnsafe(
+        `SELECT "securityCode" FROM "User" WHERE id = $1`,
+        senderId
+      );
+      senderSecurityCode = rows[0]?.securityCode;
+    }
+
+    if (!senderSecurityCode) {
+      return NextResponse.json({ error: "Security code not set. Please set it in My Profile." }, { status: 400 });
+    }
+
+    if (senderSecurityCode !== securityCode) {
+      return NextResponse.json({ error: "Invalid security code" }, { status: 401 });
+    }
+
+    // Safely get usdtBalance
+    let usdtBalance = Number((sender as any).usdtBalance ?? 0);
+    if ((sender as any).usdtBalance === undefined) {
+      try {
+        const rows: any[] = await db.$queryRawUnsafe(
+          `SELECT "usdtBalance" FROM "User" WHERE id = $1`,
+          senderId
+        );
+        usdtBalance = Number(rows[0]?.usdtBalance ?? 0);
+      } catch (err) {
+        usdtBalance = 0;
+      }
+    }
+
+    if (usdtBalance < amt) {
+      return NextResponse.json({ error: "Insufficient balance in USDT wallet" }, { status: 400 });
+    }
 
     let recipient =
       key.includes("@")
@@ -51,23 +87,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Recipient unavailable" }, { status: 400 });
     }
 
-    const sender = await db.user.findUnique({ where: { id: senderId }, select: { id: true, username: true, balance: true } });
-    if (!sender) {
-      return NextResponse.json({ error: "Sender not found" }, { status: 404 });
-    }
-    const bal = Number(sender.balance ?? 0);
-    if (bal < amt) {
-      return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
-    }
-
     await db.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: senderId },
-        data: { balance: { decrement: new Prisma.Decimal(amt.toFixed(2)) } },
-      });
+      // Update usdtBalance using raw SQL if necessary
+      try {
+        await tx.user.update({
+          where: { id: senderId },
+          data: { usdtBalance: { decrement: new Prisma.Decimal(amt.toFixed(2)) } } as any,
+        });
+      } catch (e) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "User" SET "usdtBalance" = "usdtBalance" - $1 WHERE id = $2`,
+          amt, senderId
+        );
+      }
+      
       await tx.user.update({
         where: { id: recipient!.id },
-        data: { balance: { increment: new Prisma.Decimal(amt.toFixed(2)) } },
+        data: { usdtBalance: { increment: new Prisma.Decimal(amt.toFixed(2)) } } as any,
       });
       await tx.transaction.create({
         data: {
@@ -76,7 +112,7 @@ export async function POST(req: Request) {
           level: 0,
           amount: new Prisma.Decimal((-amt).toFixed(2)),
           type: "adjustment",
-          note: `P2P to ${recipient!.username} (${recipient!.id})`,
+          note: `P2P to ${recipient!.username} (from USDT wallet)`,
         },
       });
       await tx.transaction.create({
@@ -86,7 +122,7 @@ export async function POST(req: Request) {
           level: 0,
           amount: new Prisma.Decimal(amt.toFixed(2)),
           type: "adjustment",
-          note: `P2P from ${sender.username} (${senderId})`,
+          note: `P2P from ${sender.username} (to USDT wallet)`,
         },
       });
       await tx.notification.create({

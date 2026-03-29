@@ -26,6 +26,17 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
+    // Try to get withdrawBalance for all these users via raw SQL safely
+    const withdrawMap = new Map<string, number>();
+    try {
+      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "withdrawBalance" FROM "User"`);
+      for (const r of rows) {
+        withdrawMap.set(r.id, Number(r.withdrawBalance ?? 0));
+      }
+    } catch (err) {
+      console.error("Failed to fetch withdrawBalance via raw SQL in users API");
+    }
+
     const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
         SELECT u.id AS "rootId", c.id AS "nodeId", 1 AS depth
@@ -66,6 +77,8 @@ export async function GET() {
     }
 
     const nowMs = Date.now();
+    const expiredIds: string[] = [];
+
     const safe = users.map((user) => {
       const createdAtMs = user.createdAt.getTime();
       const expiresAtMs = createdAtMs + 24 * 60 * 60 * 1000;
@@ -85,12 +98,14 @@ export async function GET() {
           secondsLeft = Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
         } else {
           verifyStatus = "expired";
+          expiredIds.push(user.id);
         }
       }
 
       return {
         ...user,
         balance: Number(user.balance ?? 0),
+        withdrawBalance: withdrawMap.get(user.id) ?? 0,
         createdAt: user.createdAt.toISOString(),
         downlineCount: downlineMap.get(user.id) ?? 0,
         verifyStatus,
@@ -98,7 +113,28 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ users: safe });
+    // Cleanup: Delete expired users from database as requested
+    if (expiredIds.length > 0) {
+      try {
+        await db.$transaction([
+          db.notification.deleteMany({ where: { userId: { in: expiredIds } } }),
+          db.otp.deleteMany({ where: { userId: { in: expiredIds } } }),
+          db.supportTicket.deleteMany({ where: { userId: { in: expiredIds } } }),
+          db.transaction.deleteMany({ where: { OR: [{ userId: { in: expiredIds } }, { sourceUserId: { in: expiredIds } }] } }),
+          db.deposit.deleteMany({ where: { userId: { in: expiredIds } } }),
+          db.withdrawal.deleteMany({ where: { userId: { in: expiredIds } } }),
+          db.user.deleteMany({ where: { id: { in: expiredIds } } }),
+        ]);
+        console.log(`Cleaned up ${expiredIds.length} expired users`);
+      } catch (err) {
+        console.error("Failed to cleanup expired users:", err);
+      }
+    }
+
+    // Filter out expired users from the response list
+    const filteredSafe = safe.filter(u => u.verifyStatus !== "expired");
+
+    return NextResponse.json({ users: filteredSafe });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch users";
     return NextResponse.json({ error: message }, { status: 500 });

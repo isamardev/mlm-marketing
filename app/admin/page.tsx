@@ -14,11 +14,57 @@ const navItems: NavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
   { key: "deposits", label: "Deposits" },
-  { key: "levels", label: "Levels" },
   { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
   { key: "withdrawals", label: "Withdrawals" },
 ];
+
+function ConfirmationModal({
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/60 backdrop-blur-md transition-all duration-300"
+      />
+      <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-card p-6 shadow-2xl ring-1 ring-ring animate-in fade-in zoom-in duration-200">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
+            <span className="text-xl">⚠️</span>
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">Are you sure?</h3>
+          <p className="mt-2 text-sm text-subtext">{message}</p>
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            onClick={onCancel}
+            className="rounded-full bg-muted py-2.5 text-sm font-medium text-foreground transition hover:bg-muted/80"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-full bg-primary py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatCard({
   label,
@@ -30,7 +76,7 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-sm ring-1 ring-ring">
+    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
       <div className="text-xs text-subtext">{label}</div>
       <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
       {hint ? <div className="mt-2 text-sm text-subtext">{hint}</div> : null}
@@ -238,16 +284,10 @@ export default function AdminPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<NavItem["key"]>("overview");
 
-  const [stats, setStats] = useState<{
-    totalUsers: number;
-    totalDeposits: number;
-    systemBalance: number;
-    availableBalance: number;
-    todayEarning: number;
-  } | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-  const [levels, setLevels] = useState<number[]>(Array.from({ length: 20 }, () => 0));
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [levelsMsg, setLevelsMsg] = useState("");
   const [payoutMsg, setPayoutMsg] = useState("");
   const [payoutUserId, setPayoutUserId] = useState("");
@@ -263,16 +303,12 @@ export default function AdminPage() {
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState("");
-
-  const activity = useMemo(
-    () => [
-      { time: "2m ago", text: "USR-1026 completed signup" },
-      { time: "10m ago", text: "USR-1025 added a direct invite" },
-      { time: "1h ago", text: "Payout batch generated (preview)" },
-      { time: "3h ago", text: "Policy updated: max directs = 2" },
-    ],
-    [],
-  );
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
@@ -319,28 +355,44 @@ export default function AdminPage() {
       return;
     }
     const load = async () => {
-      const [s, l, t] = await Promise.all([
-        fetch("/api/admin/stats", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/admin/settings", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/admin/tree", { cache: "no-store" }).then((r) => r.json()),
-      ]);
-      if (typeof s?.totalUsers === "number") setStats(s);
-      if (Array.isArray(l?.levelPercentages) && l.levelPercentages.length === 20) {
-        setLevels(l.levelPercentages.map((x: any) => Number(x)));
+      try {
+        const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
+        if (statsRes.ok) {
+          const s = await statsRes.json();
+          if (typeof s?.totalUsers === "number") setStats(s);
+        } else {
+          console.error("Stats API failed:", await statsRes.text());
+        }
+
+        const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
+        if (settingsRes.ok) {
+          const l = await settingsRes.json();
+          if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
+        }
+
+        const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
+        if (treeRes.ok) {
+          const t = await treeRes.json();
+          if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
+        }
+
+        const withdrawalsRes = await fetch("/api/admin/withdrawals", { cache: "no-store" });
+        if (withdrawalsRes.ok) {
+          const data = await withdrawalsRes.json();
+          setPendingWithdrawals(data.items || []);
+        }
+
+        const depositsRes = await fetch("/api/admin/deposits", { cache: "no-store" });
+        if (depositsRes.ok) {
+          const data = await depositsRes.json();
+          setDeposits(data.items || []);
+        }
+      } catch (err) {
+        console.error("Admin data load error:", err);
+        setAdminUiMsg("Some admin data failed to load");
       }
-      if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
-      try {
-        const res = await fetch("/api/admin/withdrawals", { cache: "no-store" });
-        const data = await res.json();
-        if (res.ok) setPendingWithdrawals(data.items || []);
-      } catch {}
-      try {
-        const res = await fetch("/api/admin/deposits", { cache: "no-store" });
-        const data = await res.json();
-        if (res.ok) setDeposits(data.items || []);
-      } catch {}
     };
-    load().catch(() => setLevelsMsg("Failed to load admin data"));
+    load().catch(() => setAdminUiMsg("Failed to load admin data"));
   }, [router, session?.user?.id, session?.user?.status, status]);
 
   useEffect(() => {
@@ -374,7 +426,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-card shadow-sm ring-1 ring-ring hover:bg-muted lg:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:hidden"
               aria-label="Open menu"
             >
               ☰
@@ -382,7 +434,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setSidebarCollapsed((v) => !v)}
-              className="hidden h-10 w-10 items-center justify-center rounded-xl bg-card shadow-sm ring-1 ring-ring hover:bg-muted lg:inline-flex"
+              className="hidden h-10 w-10 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:inline-flex"
               aria-label="Toggle sidebar"
               title="Toggle sidebar"
             >
@@ -393,9 +445,9 @@ export default function AdminPage() {
               </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden sm:block text-right">
+            <div className="text-right">
               <div className="text-sm font-medium">{session?.user?.name ?? "Admin"}</div>
-              <div className="text-xs text-subtext">{session?.user?.email ?? "-"}</div>
+              <div className="text-[10px] sm:text-xs text-subtext">{session?.user?.email ?? "-"}</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20">
               {initials}
@@ -406,7 +458,7 @@ export default function AdminPage() {
         <div className={`mt-6 grid gap-6 ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
           {!sidebarCollapsed && (
           <aside className="hidden lg:block">
-            <div className="rounded-3xl bg-card p-3 shadow-sm ring-1 ring-ring">
+            <div className="rounded-3xl bg-card p-3 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Navigation</div>
               <div className="mt-1 grid gap-1">
                 {navItems.map((item) => (
@@ -430,7 +482,7 @@ export default function AdminPage() {
           <main className="space-y-6">
             {active === "overview" ? (
               <>
-                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="text-sm text-subtext">Overview</div>
@@ -443,7 +495,7 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={() => signOut({ callbackUrl: "/" })}
-                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted w-full sm:w-auto"
+                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted w-full sm:w-auto"
                       >
                         Logout
                       </button>
@@ -456,34 +508,21 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                  <div className="mt-6 grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
                     <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
                     <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} hint="Transaction type: deposit" />
+                    <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} hint="Admin profit" />
+                    <StatCard label="All User Wallet" value={toUSD(Number(stats?.allUserWallet ?? 0))} hint="Sum of all user balances" />
                     <StatCard label="Available Balance" value={toUSD(Number(stats?.availableBalance ?? 0))} hint="Admin wallet" />
                     <StatCard label="Today Earning" value={toUSD(Number(stats?.todayEarning ?? 0))} hint="Admin commissions today" />
                     <StatCard label="System Balance" value={toUSD(Number(stats?.systemBalance ?? 0))} hint="Sum of balances" />
-                    <StatCard label="Levels" value="20" hint="Commission depth" />
-                  </div>
-                </div>
-                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
-                  <div className="text-sm font-semibold">Recent Activity</div>
-                  <div className="mt-1 text-sm text-subtext">System events (preview)</div>
-                  <div className="mt-6 grid gap-3">
-                    {activity.map((a, i) => (
-                      <div key={i} className="rounded-2xl bg-muted p-3 sm:p-4 ring-1 ring-ring">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="text-sm text-foreground">{a.text}</div>
-                          <div className="text-xs text-subtext">{a.time}</div>
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </>
             ) : null}
 
             {active === "users" ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">Users</div>
@@ -521,9 +560,9 @@ export default function AdminPage() {
                 {usersError ? (
                   <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-red-500 ring-1 ring-ring">{usersError}</div>
                 ) : null}
-                <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring sm:overflow-visible">
-                  <div className="min-w-[680px] sm:min-w-0">
-                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1fr] gap-2 bg-muted px-3 sm:px-4 py-3 text-xs font-medium text-subtext">
+                <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
+                  <div className="min-w-[800px]">
+                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>User</div>
                       <div>Status</div>
                       <div>Verify</div>
@@ -531,169 +570,217 @@ export default function AdminPage() {
                       <div>Downline</div>
                       <div>Action</div>
                     </div>
-                    <div className="max-h-[560px] overflow-y-auto sm:max-h-none sm:overflow-y-visible">
-                      <div className="divide-y divide-[color:var(--ring)]">
-                        {usersLoading ? (
-                          <div className="px-4 py-6 text-center text-sm text-subtext">Loading users...</div>
-                        ) : null}
-                        {users
-                          .filter((u) => {
-                            if (userStatusFilter === "all") return true;
-                            return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
-                          })
-                          .filter((u) => {
-                            if (!search.trim()) return true;
-                            const s = search.trim().toLowerCase();
-                            return (
-                              String(u.username ?? "").toLowerCase().includes(s) ||
-                              String(u.email ?? "").toLowerCase().includes(s) ||
-                              String(u.referrerCode ?? "").toLowerCase().includes(s)
-                            );
-                          })
-                          .map((u) => (
-                            <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1fr] gap-2 px-3 sm:px-4 py-4 text-sm">
-                              <div>
-                                <div className="font-medium text-foreground">{u.username}</div>
-                                <div className="text-xs text-subtext">{u.email}</div>
-                              </div>
-                              <div className="flex items-center">
-                                <span
-                                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 ${
-                                    u.status === "active" || u.status === "admin"
-                                      ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
-                                      : u.status === "inactive"
-                                      ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
-                                      : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
-                                  }`}
-                                >
-                                  {u.status}
-                                </span>
-                              </div>
-                              <div className="flex items-center">
-                                {u.verifyStatus === "verified" ? (
-                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]">
-                                    VERIFIED
-                                  </span>
-                                ) : u.verifyStatus === "unverified" ? (
-                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]">
-                                    UNVERIFIED{typeof u.secondsLeft === "number" && u.secondsLeft > 0 ? ` · ${Math.floor(u.secondsLeft / 3600)}h` : ""}
-                                  </span>
-                                ) : u.verifyStatus === "expired" ? (
-                                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1 bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]">
-                                    EXPIRED
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-subtext">—</span>
-                                )}
-                              </div>
-                              <div className="text-subtext">{String(u.balance ?? 0)}</div>
-                              <div className="text-subtext">{String(u.downlineCount ?? 0)}</div>
-                              <div className="flex items-center gap-2">
-                                {u.status === "admin" ? (
-                                  <span className="text-xs text-subtext">Admin</span>
-                                ) : (
-                                  <>
-                                    {u.status !== "active" && (
-                                      <button
-                                        type="button"
-                                        onClick={async () => {
-                                          try {
-                                            const res = await fetch("/api/admin/users/status", {
-                                              method: "PATCH",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({ id: u.id, status: "active" }),
-                                            });
-                                            const data = await res.json();
-                                            if (!res.ok) {
-                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
-                                              return;
-                                            }
-                                            toast.success(u.status === "blocked" ? "User unblocked" : "User activated");
-                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "active" } : x)));
-                                          } catch {
-                                            toast.error("Update failed");
-                                          }
-                                        }}
-                                        className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1 text-xs text-white ring-1 ring-primary/20"
-                                      >
-                                        {u.status === "blocked" ? "Unblock" : "Activate"}
-                                      </button>
-                                    )}
-                                    {u.status !== "inactive" && u.status !== "admin" && (
-                                      <button
-                                        type="button"
-                                        onClick={async () => {
-                                          try {
-                                            const res = await fetch("/api/admin/users/status", {
-                                              method: "PATCH",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({ id: u.id, status: "inactive" }),
-                                            });
-                                            const data = await res.json();
-                                            if (!res.ok) {
-                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
-                                              return;
-                                            }
-                                            toast.success("User deactivated");
-                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "inactive" } : x)));
-                                          } catch {
-                                            toast.error("Update failed");
-                                          }
-                                        }}
-                                        className="inline-flex items-center justify-center rounded-full bg-card px-3 py-1 text-xs text-foreground ring-1 ring-ring"
-                                      >
-                                        Deactivate
-                                      </button>
-                                    )}
-                                    {u.status !== "blocked" && u.status !== "admin" && (
-                                      <button
-                                        type="button"
-                                        onClick={async () => {
-                                          try {
-                                            const res = await fetch("/api/admin/users/status", {
-                                              method: "PATCH",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({ id: u.id, status: "blocked" }),
-                                            });
-                                            const data = await res.json();
-                                            if (!res.ok) {
-                                              toast.error(typeof data?.error === "string" ? data.error : "Update failed");
-                                              return;
-                                            }
-                                            toast.success("User blocked");
-                                            setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "blocked" } : x)));
-                                          } catch {
-                                            toast.error("Update failed");
-                                          }
-                                        }}
-                                        className="inline-flex items-center justify-center rounded-full bg-red-600 px-3 py-1 text-xs text-white ring-1 ring-red-600/20"
-                                      >
-                                        Block
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {usersLoading ? (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">Loading users...</div>
+                      ) : null}
+                      {users
+                        .filter((u) => {
+                          if (userStatusFilter === "all") return true;
+                          return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
+                        })
+                        .filter((u) => {
+                          if (!search.trim()) return true;
+                          const s = search.trim().toLowerCase();
+                          return (
+                            String(u.username ?? "").toLowerCase().includes(s) ||
+                            String(u.email ?? "").toLowerCase().includes(s) ||
+                            String(u.referrerCode ?? "").toLowerCase().includes(s)
+                          );
+                        })
+                        .map((u) => (
+                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition">
+                            <div>
+                              <div className="font-medium text-foreground">{u.username}</div>
+                              <div className="text-[10px] text-subtext">{u.email}</div>
                             </div>
-                          ))}
-                        {!usersLoading &&
-                        users
-                          .filter((u) => {
-                            if (userStatusFilter === "all") return true;
-                            return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
-                          })
-                          .filter((u) => {
-                            if (!search.trim()) return true;
-                            const s = search.trim().toLowerCase();
-                            return (
-                              String(u.username ?? "").toLowerCase().includes(s) ||
-                              String(u.email ?? "").toLowerCase().includes(s) ||
-                              String(u.referrerCode ?? "").toLowerCase().includes(s)
-                            );
-                          }).length === 0 ? (
-                          <div className="px-4 py-6 text-center text-sm text-subtext">No users found</div>
-                        ) : null}
-                      </div>
+                            <div className="flex items-center">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${
+                                  u.status === "active" || u.status === "admin"
+                                    ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                    : u.status === "inactive"
+                                    ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
+                                    : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
+                                }`}
+                              >
+                                {u.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              {u.verifyStatus === "verified" ? (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]">
+                                  VERIFIED
+                                </span>
+                              ) : u.verifyStatus === "unverified" ? (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]">
+                                  UNVERIFIED{typeof u.secondsLeft === "number" && u.secondsLeft > 0 ? ` · ${Math.floor(u.secondsLeft / 3600)}h` : ""}
+                                </span>
+                              ) : u.verifyStatus === "expired" ? (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]">
+                                  EXPIRED
+                                </span>
+                              ) : (
+                                <span className="text-xs text-subtext">—</span>
+                              )}
+                            </div>
+                            <div className="text-subtext flex items-center">{String(u.balance ?? 0)}</div>
+                            <div className="text-subtext flex items-center">{String(u.downlineCount ?? 0)}</div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditingUser(u)}
+                                className="inline-flex items-center justify-center rounded-full bg-blue-600 px-3 py-1 text-xs text-white ring-1 ring-blue-600/20 hover:bg-blue-700 transition"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setConfirmModal({
+                                    message: `You are about to login as ${u.username}. You will be logged out of the admin panel and redirected to the user dashboard.`,
+                                    confirmLabel: "Login as User",
+                                    onConfirm: async () => {
+                                      setConfirmModal(null);
+                                      await signIn("credentials", {
+                                        email: u.email,
+                                        isImpersonation: "true",
+                                        adminToken: "admin123", // Using fixed adminToken for simplicity as per auth.ts logic
+                                        callbackUrl: "/dashboard",
+                                      });
+                                    },
+                                  });
+                                }}
+                                className="inline-flex items-center justify-center rounded-full bg-green-600 px-3 py-1 text-xs text-white ring-1 ring-green-600/20 hover:bg-green-700 transition"
+                              >
+                                View
+                              </button>
+                              {u.status === "admin" ? (
+                                <span className="text-xs text-subtext">Admin</span>
+                              ) : (
+                                <>
+                                  {u.status !== "active" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const actionLabel = u.status === "blocked" ? "unblock" : "activate";
+                                        setConfirmModal({
+                                          message: `You are about to ${actionLabel} ${u.username}. This will allow them to access their account again.`,
+                                          confirmLabel: actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1),
+                                          onConfirm: async () => {
+                                            setConfirmModal(null);
+                                            try {
+                                              const res = await fetch("/api/admin/users/status", {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ id: u.id, status: "active" }),
+                                              });
+                                              const data = await res.json();
+                                              if (!res.ok) {
+                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                                return;
+                                              }
+                                              toast.success(u.status === "blocked" ? "User unblocked" : "User activated");
+                                              setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "active" } : x)));
+                                            } catch {
+                                              toast.error("Update failed");
+                                            }
+                                          },
+                                        });
+                                      }}
+                                      className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1 text-xs text-white ring-1 ring-primary/20 hover:bg-primary/90 transition"
+                                    >
+                                      {u.status === "blocked" ? "Unblock" : "Activate"}
+                                    </button>
+                                  )}
+                                  {u.status !== "inactive" && u.status !== "admin" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmModal({
+                                          message: `Are you sure you want to deactivate ${u.username}? They will not be able to perform some actions.`,
+                                          confirmLabel: "Deactivate",
+                                          onConfirm: async () => {
+                                            setConfirmModal(null);
+                                            try {
+                                              const res = await fetch("/api/admin/users/status", {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ id: u.id, status: "inactive" }),
+                                              });
+                                              const data = await res.json();
+                                              if (!res.ok) {
+                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                                return;
+                                              }
+                                              toast.success("User deactivated");
+                                              setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "inactive" } : x)));
+                                            } catch {
+                                              toast.error("Update failed");
+                                            }
+                                          },
+                                        });
+                                      }}
+                                      className="inline-flex items-center justify-center rounded-full bg-card px-3 py-1 text-xs text-foreground ring-1 ring-ring hover:bg-muted transition"
+                                    >
+                                      Deactivate
+                                    </button>
+                                  )}
+                                  {u.status !== "blocked" && u.status !== "admin" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmModal({
+                                          message: `Are you sure you want to block ${u.username}? This will completely restrict their access.`,
+                                          confirmLabel: "Block User",
+                                          onConfirm: async () => {
+                                            setConfirmModal(null);
+                                            try {
+                                              const res = await fetch("/api/admin/users/status", {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ id: u.id, status: "blocked" }),
+                                              });
+                                              const data = await res.json();
+                                              if (!res.ok) {
+                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                                return;
+                                              }
+                                              toast.success("User blocked");
+                                              setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "blocked" } : x)));
+                                            } catch {
+                                              toast.error("Update failed");
+                                            }
+                                          },
+                                        });
+                                      }}
+                                      className="inline-flex items-center justify-center rounded-full bg-red-600 px-3 py-1 text-xs text-white ring-1 ring-red-600/20 hover:bg-red-700 transition"
+                                    >
+                                      Block
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      {!usersLoading &&
+                      users
+                        .filter((u) => {
+                          if (userStatusFilter === "all") return true;
+                          return String(u.status ?? "").toLowerCase() === userStatusFilter.toLowerCase();
+                        })
+                        .filter((u) => {
+                          if (!search.trim()) return true;
+                          const s = search.trim().toLowerCase();
+                          return (
+                            String(u.username ?? "").toLowerCase().includes(s) ||
+                            String(u.email ?? "").toLowerCase().includes(s) ||
+                            String(u.referrerCode ?? "").toLowerCase().includes(s)
+                          );
+                        }).length === 0 ? (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No users found</div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -701,7 +788,7 @@ export default function AdminPage() {
             ) : null}
 
             {active === "payouts" ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="text-sm font-semibold">Verify Deposit Hash</div>
                 <div className="mt-1 text-sm text-subtext">Admin-only: dedupe + optional BscScan verify + payout trigger</div>
                 <form
@@ -775,36 +862,26 @@ export default function AdminPage() {
               </div>
             ) : null}
 
-            {active === "settings" || active === "levels" ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
-                <div className="text-sm font-semibold">Level Percentages (1–20)</div>
-                <div className="mt-2 text-sm text-subtext">Update commission settings</div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {levels.map((v, idx) => (
-                    <label key={idx} className="grid gap-2">
-                      <span className="text-xs font-medium text-subtext">Level {idx + 1}</span>
-                      <input
-                        value={String(v)}
-                        onChange={(e) => {
-                          const next = [...levels];
-                          next[idx] = Number(e.target.value);
-                          setLevels(next);
-                        }}
-                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder="0"
-                      />
-                    </label>
-                  ))}
+            {active === "settings" ? (
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+                <div className="text-sm font-semibold">System Settings</div>
+                <div className="mt-2 text-sm text-subtext">Update global configurations</div>
+                
+                <div className="mt-6 p-4 rounded-2xl bg-muted ring-1 ring-ring">
+                  <div className="text-sm font-medium mb-4">Support Contact</div>
+                  <label className="grid gap-2">
+                    <span className="text-xs font-medium text-subtext">WhatsApp Support Number (with country code, e.g., 923001234567)</span>
+                    <input
+                      value={whatsappNumber}
+                      onChange={(e) => setWhatsappNumber(e.target.value)}
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="923001234567"
+                    />
+                  </label>
                 </div>
+
                 {levelsMsg ? <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{levelsMsg}</div> : null}
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setActive("levels")}
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-background w-full"
-                  >
-                    Edit
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={async () => {
@@ -813,7 +890,9 @@ export default function AdminPage() {
                         const res = await fetch("/api/admin/settings", {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ levelPercentages: levels }),
+                          body: JSON.stringify({ 
+                            whatsappNumber: whatsappNumber.trim()
+                          }),
                         });
                         const data = await res.json();
                         if (!res.ok) {
@@ -834,7 +913,7 @@ export default function AdminPage() {
             ) : null}
 
             {active === "withdrawals" ? (
-                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">Pending Withdrawals</div>
@@ -849,7 +928,7 @@ export default function AdminPage() {
                           if (res.ok) setPendingWithdrawals(data.items || []);
                         } catch {}
                       }}
-                      className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                      className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted"
                     >
                       Refresh
                     </button>
@@ -939,7 +1018,7 @@ export default function AdminPage() {
               ) : null}
 
             {active === "deposits" ? (
-                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+                <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">Deposits</div>
@@ -975,7 +1054,7 @@ export default function AdminPage() {
                             if (res.ok) setDeposits(data.items || []);
                           } catch {}
                         }}
-                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted"
                       >
                         Refresh
                       </button>
@@ -1018,7 +1097,7 @@ export default function AdminPage() {
               ) : null}
 
             {active === "overview" && adminTreeNodes ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">Admin Tree</div>
@@ -1026,7 +1105,7 @@ export default function AdminPage() {
                   </div>
                   <div className="text-xs text-subtext">{adminTreeNodes.length} nodes</div>
                 </div>
-                <div className="mt-6 max-h-[380px] overflow-auto rounded-2xl ring-1 ring-ring">
+                <div className="mt-6 max-h-[380px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="divide-y divide-[color:var(--ring)]">
                     {adminTreeNodes.slice(0, 200).map((n: any) => (
                       <div key={n.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
@@ -1094,6 +1173,139 @@ export default function AdminPage() {
           </div>
         </div>
       ) : null}
+
+      {editingUser && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            onClick={() => setEditingUser(null)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-ring">
+            <div className="border-b border-ring bg-muted/30 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">Manage User: {editingUser.username}</h3>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="rounded-xl p-2 hover:bg-muted transition text-subtext"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <form
+              className="p-6 space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const data = {
+                  id: editingUser.id,
+                  username: formData.get("username"),
+                  email: formData.get("email"),
+                  balance: formData.get("balance"),
+                  withdrawBalance: formData.get("withdrawBalance"),
+                  status: formData.get("status"),
+                };
+                try {
+                  const res = await fetch("/api/admin/users/update", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data),
+                  });
+                  const json = await res.json();
+                  if (!res.ok) {
+                    toast.error(json.error || "Update failed");
+                    return;
+                  }
+                  toast.success("User updated successfully");
+                  setEditingUser(null);
+                  fetchAdminUsers().catch(() => undefined);
+                } catch (err) {
+                  toast.error("An error occurred");
+                }
+              }}
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Username</span>
+                  <input
+                    name="username"
+                    defaultValue={editingUser.username}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Email</span>
+                  <input
+                    name="email"
+                    type="email"
+                    defaultValue={editingUser.email}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Main Balance ($)</span>
+                  <input
+                    name="balance"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingUser.balance}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Withdraw Wallet ($)</span>
+                  <input
+                    name="withdrawBalance"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingUser.withdrawBalance || 0}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-subtext">Status</span>
+                  <select
+                    name="status"
+                    defaultValue={editingUser.status}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+              </div>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="rounded-full bg-muted px-6 py-2 text-sm font-medium text-foreground hover:bg-muted/80 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary/90 transition shadow-lg shadow-primary/20"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {confirmModal && (
+        <ConfirmationModal
+          message={confirmModal.message}
+          confirmLabel={confirmModal.confirmLabel}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
     </div>
   );
 }

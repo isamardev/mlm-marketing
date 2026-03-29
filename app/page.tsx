@@ -7,199 +7,199 @@ import { toast } from "react-toastify";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
 const COUNTRIES = [
-  "Afghanistan",
-  "Albania",
-  "Algeria",
-  "Andorra",
-  "Angola",
-  "Antigua and Barbuda",
-  "Argentina",
-  "Armenia",
-  "Australia",
-  "Austria",
-  "Azerbaijan",
-  "Bahamas",
-  "Bahrain",
-  "Bangladesh",
-  "Barbados",
-  "Belarus",
-  "Belgium",
-  "Belize",
-  "Benin",
-  "Bhutan",
-  "Bolivia",
-  "Bosnia and Herzegovina",
-  "Botswana",
-  "Brazil",
-  "Brunei",
-  "Bulgaria",
-  "Burkina Faso",
-  "Burundi",
-  "Cabo Verde",
-  "Cambodia",
-  "Cameroon",
-  "Canada",
-  "Central African Republic",
-  "Chad",
-  "Chile",
-  "China",
-  "Colombia",
-  "Comoros",
-  "Congo",
-  "Costa Rica",
-  "Croatia",
-  "Cuba",
-  "Cyprus",
-  "Czech Republic",
-  "Denmark",
-  "Djibouti",
-  "Dominica",
-  "Dominican Republic",
-  "Ecuador",
-  "Egypt",
-  "El Salvador",
-  "Equatorial Guinea",
-  "Eritrea",
-  "Estonia",
-  "Eswatini",
-  "Ethiopia",
-  "Fiji",
-  "Finland",
-  "France",
-  "Gabon",
-  "Gambia",
-  "Georgia",
-  "Germany",
-  "Ghana",
-  "Greece",
-  "Grenada",
-  "Guatemala",
-  "Guinea",
-  "Guinea-Bissau",
-  "Guyana",
-  "Haiti",
-  "Honduras",
-  "Hungary",
-  "Iceland",
-  "India",
-  "Indonesia",
-  "Iran",
-  "Iraq",
-  "Ireland",
-  "Israel",
-  "Italy",
-  "Jamaica",
-  "Japan",
-  "Jordan",
-  "Kazakhstan",
-  "Kenya",
-  "Kiribati",
-  "Kuwait",
-  "Kyrgyzstan",
-  "Laos",
-  "Latvia",
-  "Lebanon",
-  "Lesotho",
-  "Liberia",
-  "Libya",
-  "Liechtenstein",
-  "Lithuania",
-  "Luxembourg",
-  "Madagascar",
-  "Malawi",
-  "Malaysia",
-  "Maldives",
-  "Mali",
-  "Malta",
-  "Marshall Islands",
-  "Mauritania",
-  "Mauritius",
-  "Mexico",
-  "Micronesia",
-  "Moldova",
-  "Monaco",
-  "Mongolia",
-  "Montenegro",
-  "Morocco",
-  "Mozambique",
-  "Myanmar",
-  "Namibia",
-  "Nauru",
-  "Nepal",
-  "Netherlands",
-  "New Zealand",
-  "Nicaragua",
-  "Niger",
-  "Nigeria",
-  "North Korea",
-  "North Macedonia",
-  "Norway",
-  "Oman",
-  "Pakistan",
-  "Palau",
-  "Panama",
-  "Papua New Guinea",
-  "Paraguay",
-  "Peru",
-  "Philippines",
-  "Poland",
-  "Portugal",
-  "Qatar",
-  "Romania",
-  "Russia",
-  "Rwanda",
-  "Saint Kitts and Nevis",
-  "Saint Lucia",
-  "Saint Vincent and the Grenadines",
-  "Samoa",
-  "San Marino",
-  "Sao Tome and Principe",
-  "Saudi Arabia",
-  "Senegal",
-  "Serbia",
-  "Seychelles",
-  "Sierra Leone",
-  "Singapore",
-  "Slovakia",
-  "Slovenia",
-  "Solomon Islands",
-  "Somalia",
-  "South Africa",
-  "South Korea",
-  "South Sudan",
-  "Spain",
-  "Sri Lanka",
-  "Sudan",
-  "Suriname",
-  "Sweden",
-  "Switzerland",
-  "Syria",
-  "Taiwan",
-  "Tajikistan",
-  "Tanzania",
-  "Thailand",
-  "Timor-Leste",
-  "Togo",
-  "Tonga",
-  "Trinidad and Tobago",
-  "Tunisia",
-  "Turkey",
-  "Turkmenistan",
-  "Tuvalu",
-  "Uganda",
-  "Ukraine",
-  "United Arab Emirates",
-  "United Kingdom",
-  "United States",
-  "Uruguay",
-  "Uzbekistan",
-  "Vanuatu",
-  "Vatican City",
-  "Venezuela",
-  "Vietnam",
-  "Yemen",
-  "Zambia",
-  "Zimbabwe",
+  { name: "Pakistan", code: "+92" },
+  { name: "Afghanistan", code: "+93" },
+  { name: "Albania", code: "+355" },
+  { name: "Algeria", code: "+213" },
+  { name: "Andorra", code: "+376" },
+  { name: "Angola", code: "+244" },
+  { name: "Antigua and Barbuda", code: "+1" },
+  { name: "Argentina", code: "+54" },
+  { name: "Armenia", code: "+374" },
+  { name: "Australia", code: "+61" },
+  { name: "Austria", code: "+43" },
+  { name: "Azerbaijan", code: "+994" },
+  { name: "Bahamas", code: "+1" },
+  { name: "Bahrain", code: "+973" },
+  { name: "Bangladesh", code: "+880" },
+  { name: "Barbados", code: "+1" },
+  { name: "Belarus", code: "+375" },
+  { name: "Belgium", code: "+32" },
+  { name: "Belize", code: "+501" },
+  { name: "Benin", code: "+229" },
+  { name: "Bhutan", code: "+975" },
+  { name: "Bolivia", code: "+591" },
+  { name: "Bosnia and Herzegovina", code: "+387" },
+  { name: "Botswana", code: "+267" },
+  { name: "Brazil", code: "+55" },
+  { name: "Brunei", code: "+673" },
+  { name: "Bulgaria", code: "+359" },
+  { name: "Burkina Faso", code: "+226" },
+  { name: "Burundi", code: "+257" },
+  { name: "Cabo Verde", code: "+238" },
+  { name: "Cambodia", code: "+855" },
+  { name: "Cameroon", code: "+237" },
+  { name: "Canada", code: "+1" },
+  { name: "Central African Republic", code: "+236" },
+  { name: "Chad", code: "+235" },
+  { name: "Chile", code: "+56" },
+  { name: "China", code: "+86" },
+  { name: "Colombia", code: "+57" },
+  { name: "Comoros", code: "+269" },
+  { name: "Congo", code: "+242" },
+  { name: "Costa Rica", code: "+506" },
+  { name: "Croatia", code: "+385" },
+  { name: "Cuba", code: "+53" },
+  { name: "Cyprus", code: "+357" },
+  { name: "Czech Republic", code: "+420" },
+  { name: "Denmark", code: "+45" },
+  { name: "Djibouti", code: "+253" },
+  { name: "Dominica", code: "+1" },
+  { name: "Dominican Republic", code: "+1" },
+  { name: "Ecuador", code: "+593" },
+  { name: "Egypt", code: "+20" },
+  { name: "El Salvador", code: "+503" },
+  { name: "Equatorial Guinea", code: "+240" },
+  { name: "Eritrea", code: "+291" },
+  { name: "Estonia", code: "+372" },
+  { name: "Eswatini", code: "+268" },
+  { name: "Ethiopia", code: "+251" },
+  { name: "Fiji", code: "+679" },
+  { name: "Finland", code: "+358" },
+  { name: "France", code: "+33" },
+  { name: "Gabon", code: "+241" },
+  { name: "Gambia", code: "+220" },
+  { name: "Georgia", code: "+995" },
+  { name: "Germany", code: "+49" },
+  { name: "Ghana", code: "+233" },
+  { name: "Greece", code: "+30" },
+  { name: "Grenada", code: "+1" },
+  { name: "Guatemala", code: "+502" },
+  { name: "Guinea", code: "+224" },
+  { name: "Guinea-Bissau", code: "+245" },
+  { name: "Guyana", code: "+592" },
+  { name: "Haiti", code: "+509" },
+  { name: "Honduras", code: "+504" },
+  { name: "Hungary", code: "+36" },
+  { name: "Iceland", code: "+354" },
+  { name: "India", code: "+91" },
+  { name: "Indonesia", code: "+62" },
+  { name: "Iran", code: "+98" },
+  { name: "Iraq", code: "+964" },
+  { name: "Ireland", code: "+353" },
+  { name: "Israel", code: "+972" },
+  { name: "Italy", code: "+39" },
+  { name: "Jamaica", code: "+1" },
+  { name: "Japan", code: "+81" },
+  { name: "Jordan", code: "+962" },
+  { name: "Kazakhstan", code: "+7" },
+  { name: "Kenya", code: "+254" },
+  { name: "Kiribati", code: "+686" },
+  { name: "Kuwait", code: "+965" },
+  { name: "Kyrgyzstan", code: "+996" },
+  { name: "Laos", code: "+856" },
+  { name: "Latvia", code: "+371" },
+  { name: "Lebanon", code: "+961" },
+  { name: "Lesotho", code: "+266" },
+  { name: "Liberia", code: "+231" },
+  { name: "Libya", code: "+218" },
+  { name: "Liechtenstein", code: "+423" },
+  { name: "Lithuania", code: "+370" },
+  { name: "Luxembourg", code: "+352" },
+  { name: "Madagascar", code: "+261" },
+  { name: "Malawi", code: "+265" },
+  { name: "Malaysia", code: "+60" },
+  { name: "Maldives", code: "+960" },
+  { name: "Mali", code: "+223" },
+  { name: "Malta", code: "+356" },
+  { name: "Marshall Islands", code: "+692" },
+  { name: "Mauritania", code: "+222" },
+  { name: "Mauritius", code: "+230" },
+  { name: "Mexico", code: "+52" },
+  { name: "Micronesia", code: "+691" },
+  { name: "Moldova", code: "+373" },
+  { name: "Monaco", code: "+377" },
+  { name: "Mongolia", code: "+976" },
+  { name: "Montenegro", code: "+382" },
+  { name: "Morocco", code: "+212" },
+  { name: "Mozambique", code: "+258" },
+  { name: "Myanmar", code: "+95" },
+  { name: "Namibia", code: "+264" },
+  { name: "Nauru", code: "+674" },
+  { name: "Nepal", code: "+977" },
+  { name: "Netherlands", code: "+31" },
+  { name: "New Zealand", code: "+64" },
+  { name: "Nicaragua", code: "+505" },
+  { name: "Niger", code: "+227" },
+  { name: "Nigeria", code: "+234" },
+  { name: "North Korea", code: "+850" },
+  { name: "North Macedonia", code: "+389" },
+  { name: "Norway", code: "+47" },
+  { name: "Oman", code: "+968" },
+  { name: "Palau", code: "+680" },
+  { name: "Panama", code: "+507" },
+  { name: "Papua New Guinea", code: "+675" },
+  { name: "Paraguay", code: "+595" },
+  { name: "Peru", code: "+51" },
+  { name: "Philippines", code: "+63" },
+  { name: "Poland", code: "+48" },
+  { name: "Portugal", code: "+351" },
+  { name: "Qatar", code: "+974" },
+  { name: "Romania", code: "+40" },
+  { name: "Russia", code: "+7" },
+  { name: "Rwanda", code: "+250" },
+  { name: "Saint Kitts and Nevis", code: "+1" },
+  { name: "Saint Lucia", code: "+1" },
+  { name: "Saint Vincent and the Grenadines", code: "+1" },
+  { name: "Samoa", code: "+685" },
+  { name: "San Marino", code: "+378" },
+  { name: "Sao Tome and Principe", code: "+239" },
+  { name: "Saudi Arabia", code: "+966" },
+  { name: "Senegal", code: "+221" },
+  { name: "Serbia", code: "+381" },
+  { name: "Seychelles", code: "+248" },
+  { name: "Sierra Leone", code: "+232" },
+  { name: "Singapore", code: "+65" },
+  { name: "Slovakia", code: "+421" },
+  { name: "Slovenia", code: "+386" },
+  { name: "Solomon Islands", code: "+677" },
+  { name: "Somalia", code: "+252" },
+  { name: "South Africa", code: "+27" },
+  { name: "South Korea", code: "+82" },
+  { name: "South Sudan", code: "+211" },
+  { name: "Spain", code: "+34" },
+  { name: "Sri Lanka", code: "+94" },
+  { name: "Sudan", code: "+249" },
+  { name: "Suriname", code: "+597" },
+  { name: "Sweden", code: "+46" },
+  { name: "Switzerland", code: "+41" },
+  { name: "Syria", code: "+963" },
+  { name: "Taiwan", code: "+886" },
+  { name: "Tajikistan", code: "+992" },
+  { name: "Tanzania", code: "+255" },
+  { name: "Thailand", code: "+66" },
+  { name: "Timor-Leste", code: "+670" },
+  { name: "Togo", code: "+228" },
+  { name: "Tonga", code: "+676" },
+  { name: "Trinidad and Tobago", code: "+1" },
+  { name: "Tunisia", code: "+216" },
+  { name: "Turkey", code: "+90" },
+  { name: "Turkmenistan", code: "+993" },
+  { name: "Tuvalu", code: "+688" },
+  { name: "Uganda", code: "+256" },
+  { name: "Ukraine", code: "+380" },
+  { name: "United Arab Emirates", code: "+971" },
+  { name: "United Kingdom", code: "+44" },
+  { name: "United States", code: "+1" },
+  { name: "Uruguay", code: "+598" },
+  { name: "Uzbekistan", code: "+998" },
+  { name: "Vanuatu", code: "+678" },
+  { name: "Vatican City", code: "+39" },
+  { name: "Venezuela", code: "+58" },
+  { name: "Vietnam", code: "+84" },
+  { name: "Yemen", code: "+967" },
+  { name: "Zambia", code: "+260" },
+  { name: "Zimbabwe", code: "+263" }
 ];
 
 function HomeContent() {
@@ -208,8 +208,8 @@ function HomeContent() {
   const hasRefParam = Boolean((searchParams.get("ref") ?? "").trim());
   const { data: session } = useSession();
   const [level, setLevel] = useState<number>(3);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("login");
+  const [authOpen, setAuthOpen] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("signup");
   const [authMessage, setAuthMessage] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(false);
   const [signupStep, setSignupStep] = useState<"form" | "otp">("form");
@@ -219,6 +219,7 @@ function HomeContent() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [toastMessage, setToastMessage] = useState("");
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("");
   const [email, setEmail] = useState("");
   const [referrerCode, setReferrerCode] = useState("");
@@ -369,14 +370,14 @@ function HomeContent() {
       <section className="relative isolate overflow-hidden">
         <div className="relative mx-auto max-w-7xl px-6 pt-12 pb-12 sm:pt-14 sm:pb-16">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
-              <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur">
+              <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur sm:flex">
                 <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(0,201,255,0.35)]" />
-                <span className="text-xs tracking-wide text-accent">Connecting People & Ideas</span>
+                <span className="text-[10px] sm:text-xs tracking-wide text-accent">Connecting People & Ideas</span>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
               {session?.user ? (
                 <>
                   <button
@@ -389,7 +390,7 @@ function HomeContent() {
                   <button
                     type="button"
                     onClick={() => signOut({ callbackUrl: "/" })}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted"
                   >
                     Logout
                   </button>
@@ -399,7 +400,7 @@ function HomeContent() {
                   <button
                     type="button"
                     onClick={openLogin}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                    className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted"
                   >
                     Login
                   </button>
@@ -426,30 +427,30 @@ function HomeContent() {
                 <a className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90" href="#levels">
                   Get Started
                 </a>
-                <a className="inline-flex items-center justify-center rounded-full bg-card px-6 py-3 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted" href="#how-it-works">
+                <a className="inline-flex items-center justify-center rounded-full bg-card px-6 py-3 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted" href="#how-it-works">
                   Learn More
                 </a>
               </div>
               <div className="mt-10 grid gap-6 sm:grid-cols-4">
-                <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-ring">
+                <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
                   <div className="text-xs text-subtext">Directs</div>
                   <div className="mt-2 text-2xl font-semibold">2</div>
                 </div>
-                <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-ring">
+                <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
                   <div className="text-xs text-subtext">Levels</div>
                   <div className="mt-2 text-2xl font-semibold">20</div>
                 </div>
-                <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-ring">
+                <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
                   <div className="text-xs text-subtext">Growth</div>
                   <div className="mt-2 text-2xl font-semibold">1 → 2</div>
                 </div>
-                <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-ring">
+                <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
                   <div className="text-xs text-subtext">Mode</div>
                   <div className="mt-2 text-2xl font-semibold">UI Only</div>
                 </div>
               </div>
             </div>
-            <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring">
+            <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="text-sm text-subtext">Today’s Snapshot</div>
               <div className="mt-2 text-2xl font-semibold">Binary Growth Preview</div>
               <div className="mt-6 grid gap-4">
@@ -504,7 +505,7 @@ function HomeContent() {
           </div>
 
           <div className="mt-8 grid gap-6 sm:grid-cols-3">
-            <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
+            <div className="rounded-2xl bg-card p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="text-sm text-subtext">Total nodes at L{level}</div>
               <div className="mt-1 text-2xl font-semibold">{totalAtLevel(level).toLocaleString()}</div>
             </div>
@@ -695,7 +696,7 @@ function HomeContent() {
               {toastMessage}
             </div>
           ) : null}
-          <div className={`relative w-full rounded-3xl bg-card p-6 shadow-xl ring-1 ring-ring ${isSignupForm ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
+          <div className={`relative w-full rounded-3xl bg-card p-6 shadow-2xl ring-1 ring-ring transition-all duration-300 ${isSignupForm ? "max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" : "max-w-md"}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-2xl font-semibold">
@@ -864,6 +865,7 @@ function HomeContent() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           fullName,
+                          phone,
                           country,
                           email,
                           password,
@@ -965,22 +967,40 @@ function HomeContent() {
                     </label>
                   </div>
 
-                  <label className="grid gap-2">
-                    <span className="text-sm font-medium text-foreground">Country</span>
-                    <select
-                      required
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="">Select country</option>
-                      {COUNTRIES.map((countryName) => (
-                        <option key={countryName} value={countryName}>
-                          {countryName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium text-foreground">Country</span>
+                      <select
+                        required
+                        value={country}
+                        onChange={(e) => {
+                          const selectedCountry = e.target.value;
+                          setCountry(selectedCountry);
+                          const dialCode = COUNTRIES.find(c => c.name === selectedCountry)?.code || "";
+                          setPhone(dialCode);
+                        }}
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <option value="">Select country</option>
+                        {COUNTRIES.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name} ({c.code})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium text-foreground">Mobile Number</span>
+                      <input
+                        required
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="+92 300 1234567"
+                      />
+                    </label>
+                  </div>
                 </>
               ) : null}
 

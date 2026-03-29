@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import WhatsAppButton from "@/components/WhatsAppButton";
 
 export default function BodyWrapper({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -11,5 +12,10 @@ export default function BodyWrapper({ children }: { children: React.ReactNode })
     }
   }, []);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <WhatsAppButton />
+    </>
+  );
 }

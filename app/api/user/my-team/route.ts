@@ -74,24 +74,14 @@ export async function GET() {
       ORDER BY t.depth ASC
     `);
 
-    if (!companyAdmin) {
-      const nodes = descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 }));
-      return NextResponse.json({ nodes });
-    }
-    const parentIsCompanyAdmin = !!me.referredById && me.referredById === companyAdmin.id;
-    if (userId === companyAdmin.id || me.status === "admin") {
-      const nodes = descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 }));
-      return NextResponse.json({ nodes });
-    }
-    if (parentIsCompanyAdmin) {
-      const nodes = [
-        { ...companyAdmin, depth: 0, verified: true },
-        ...descendants.map((n) => ({ ...n, depth: Number(n.depth) + 1, verified: Number(n.verified) === 1 })),
-      ];
-      return NextResponse.json({ nodes });
-    }
-    return NextResponse.json({ nodes: descendants.map((n) => ({ ...n, verified: Number(n.verified) === 1 })) });
-  } catch {
+    const nodes = descendants.map((n) => ({
+      ...n,
+      verified: Number(n.verified) === 1,
+    }));
+
+    return NextResponse.json({ nodes });
+  } catch (error) {
+    console.error("Failed to fetch team:", error);
     return NextResponse.json({ error: "Failed to fetch team" }, { status: 500 });
   }
 }
