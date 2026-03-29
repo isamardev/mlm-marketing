@@ -76,10 +76,10 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-      <div className="text-xs text-subtext">{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
-      {hint ? <div className="mt-2 text-sm text-subtext">{hint}</div> : null}
+    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] min-w-0">
+      <div className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-subtext truncate">{label}</div>
+      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground truncate">{value}</div>
+      {hint ? <div className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-subtext truncate">{hint}</div> : null}
     </div>
   );
 }
@@ -508,7 +508,7 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-6 grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
+                  <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
                     <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} hint="Transaction type: deposit" />
                     <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} hint="Admin profit" />
@@ -560,17 +560,17 @@ export default function AdminPage() {
                 {usersError ? (
                   <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-red-500 ring-1 ring-ring">{usersError}</div>
                 ) : null}
-                <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                  <div className="min-w-[800px]">
-                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar bg-card shadow-inner">
+                  <div className="min-w-[900px]">
+                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
                       <div>User</div>
                       <div>Status</div>
                       <div>Verify</div>
                       <div>Balance</div>
                       <div>Downline</div>
-                      <div>Action</div>
+                      <div className="text-center">Action</div>
                     </div>
-                    <div className="divide-y divide-[color:var(--ring)]">
+                    <div className="divide-y divide-ring/50">
                       {usersLoading ? (
                         <div className="px-4 py-6 text-center text-sm text-subtext">Loading users...</div>
                       ) : null}
@@ -934,14 +934,15 @@ export default function AdminPage() {
                     </button>
                   </div>
                   {withdrawMsg ? <div className="mt-3 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{withdrawMsg}</div> : null}
-                  <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-ring">
-                    <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                      <div>User</div>
-                      <div>Amount</div>
-                      <div>Address</div>
-                      <div>Action</div>
-                    </div>
-                    <div className="divide-y divide-[color:var(--ring)]">
+                  <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring bg-card shadow-inner custom-scrollbar">
+                    <div className="min-w-[800px]">
+                      <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                        <div>User</div>
+                        <div>Amount</div>
+                        <div>Address</div>
+                        <div className="text-center">Action</div>
+                      </div>
+                      <div className="divide-y divide-ring/50">
                       {pendingWithdrawals.map((w) => (
                         <div key={w.id} className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 px-4 py-4 text-sm">
                           <div className="text-foreground">
@@ -1015,7 +1016,8 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
             {active === "deposits" ? (
                 <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
@@ -1060,14 +1062,15 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-ring">
-                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                      <div>Hash</div>
-                      <div>User</div>
-                      <div>Amount</div>
-                      <div>Status</div>
-                    </div>
-                    <div className="divide-y divide-[color:var(--ring)]">
+                  <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring bg-card shadow-inner custom-scrollbar">
+                    <div className="min-w-[800px]">
+                      <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                        <div>Hash</div>
+                        <div>User</div>
+                        <div>Amount</div>
+                        <div className="text-center">Status</div>
+                      </div>
+                      <div className="divide-y divide-ring/50">
                       {deposits.map((d) => (
                         <div key={d.id} className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
                           <div className="truncate">{d.txHash}</div>
@@ -1094,7 +1097,8 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
             {active === "overview" && adminTreeNodes ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
@@ -1126,7 +1130,7 @@ export default function AdminPage() {
                     <div className="mt-4 rounded-2xl bg-muted p-4 text-xs text-subtext ring-1 ring-ring">{adminUiMsg}</div>
                   ) : null}
                 </div>
-                </div>
+              </div>
             ) : null}
           </main>
         </div>

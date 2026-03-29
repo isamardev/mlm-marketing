@@ -53,13 +53,13 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
   }, [step, userId]);
 
   return (
-    <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-      <div className="grid gap-6 md:grid-cols-[1fr_0.38fr]">
+    <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_0.38fr]">
         {step === 1 ? (
           <div className="w-full">
             <div className="text-lg font-semibold">Deposit Funds</div>
             <div className="mt-1 text-xs text-subtext">Secure gateway payment</div>
-            <div className="mt-4 grid gap-3 sm:max-w-md">
+            <div className="mt-4 grid gap-3 max-w-full lg:max-w-md">
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">Deposit Amount (USDT)</span>
                 <input
@@ -224,10 +224,10 @@ function WithdrawSection({ profile }: { profile: any }) {
   };
 
   return (
-    <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
+    <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
       <div className="text-lg font-semibold">Withdraw Funds</div>
       <div className="mt-1 text-xs text-subtext">Send USDT (BEP20) to your address</div>
-      <div className="mt-4 grid gap-3 sm:max-w-md">
+      <div className="mt-4 grid gap-3 max-w-full lg:max-w-md">
         <label className="grid gap-1">
           <div className="flex items-center justify-between">
             <span className="text-xs text-subtext">Withdraw Amount (USDT)</span>
@@ -833,10 +833,10 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] min-w-0 overflow-hidden">
-      <div className="text-[10px] sm:text-xs text-subtext truncate">{label}</div>
-      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-semibold text-foreground truncate">{value}</div>
-      {hint ? <div className="mt-1 sm:mt-2 text-[10px] sm:text-sm text-subtext truncate">{hint}</div> : null}
+    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] min-w-0">
+      <div className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-subtext truncate">{label}</div>
+      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground truncate">{value}</div>
+      {hint ? <div className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-subtext truncate">{hint}</div> : null}
     </div>
   );
 }

@@ -209,7 +209,7 @@ function HomeContent() {
   const { data: session } = useSession();
   const [level, setLevel] = useState<number>(3);
   const [authOpen, setAuthOpen] = useState(true);
-  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("signup");
+  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("login");
   const [authMessage, setAuthMessage] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(false);
   const [signupStep, setSignupStep] = useState<"form" | "otp">("form");
@@ -1171,14 +1171,22 @@ export default function Home() {
 
 function TreePreview({ depth }: { depth: number }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [w, setW] = useState(800);
+  const [w, setW] = useState(320); // Responsive default
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => setW(el.clientWidth || 800);
+    const update = () => {
+      if (el.clientWidth > 0) {
+        setW(el.clientWidth);
+      }
+    };
     update();
+    const timer = setTimeout(update, 100);
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      clearTimeout(timer);
+    };
   }, []);
   const visibleDepth = Math.min(depth, 7);
   const rowH = 84;
