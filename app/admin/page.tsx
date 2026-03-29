@@ -421,8 +421,8 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-transparent text-foreground">
       <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
@@ -440,14 +440,14 @@ export default function AdminPage() {
             >
               {sidebarCollapsed ? "›" : "‹"}
             </button>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <img src="/logo.svg" alt="Logo" className="h-8 w-auto rounded-md ring-1 ring-ring" />
               </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="text-right">
-              <div className="text-sm font-medium">{session?.user?.name ?? "Admin"}</div>
-              <div className="text-[10px] sm:text-xs text-subtext">{session?.user?.email ?? "-"}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 text-right">
+              <div className="truncate text-sm font-medium">{session?.user?.name ?? "Admin"}</div>
+              <div className="truncate text-[10px] sm:text-xs text-subtext">{session?.user?.email ?? "-"}</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20">
               {initials}
@@ -457,7 +457,7 @@ export default function AdminPage() {
 
         <div className={`mt-6 grid gap-6 ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
           {!sidebarCollapsed && (
-          <aside className="hidden lg:block">
+          <aside className="hidden min-w-0 lg:block">
             <div className="rounded-3xl bg-card p-3 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Navigation</div>
               <div className="mt-1 grid gap-1">
@@ -479,7 +479,7 @@ export default function AdminPage() {
           </aside>
           )}
 
-          <main className="space-y-6">
+          <main className="min-w-0 space-y-6">
             {active === "overview" ? (
               <>
                 <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
@@ -589,10 +589,10 @@ export default function AdminPage() {
                           );
                         })
                         .map((u) => (
-                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition">
-                            <div>
-                              <div className="font-medium text-foreground">{u.username}</div>
-                              <div className="text-[10px] text-subtext">{u.email}</div>
+                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 px-4 py-4 text-sm transition hover:bg-muted/30">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-foreground">{u.username}</div>
+                              <div className="truncate text-[10px] text-subtext">{u.email}</div>
                             </div>
                             <div className="flex items-center">
                               <span
@@ -626,7 +626,7 @@ export default function AdminPage() {
                             </div>
                             <div className="text-subtext flex items-center">{String(u.balance ?? 0)}</div>
                             <div className="text-subtext flex items-center">{String(u.downlineCount ?? 0)}</div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => setEditingUser(u)}
@@ -945,13 +945,13 @@ export default function AdminPage() {
                       <div className="divide-y divide-ring/50">
                       {pendingWithdrawals.map((w) => (
                         <div key={w.id} className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-2 px-4 py-4 text-sm">
-                          <div className="text-foreground">
-                            <div className="font-medium">{w.user?.username ?? w.userId}</div>
-                            <div className="text-xs text-subtext">{w.user?.email ?? "-"}</div>
+                          <div className="min-w-0 text-foreground">
+                            <div className="truncate font-medium">{w.user?.username ?? w.userId}</div>
+                            <div className="truncate text-xs text-subtext">{w.user?.email ?? "-"}</div>
                           </div>
                           <div className="text-foreground">{String(w.amount)}</div>
-                          <div className="text-subtext">{w.address}</div>
-                          <div className="flex items-center gap-2">
+                          <div className="break-all text-subtext">{w.address}</div>
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <button
                               type="button"
                               onClick={async () => {
@@ -1112,12 +1112,12 @@ export default function AdminPage() {
                 <div className="mt-6 max-h-[380px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="divide-y divide-[color:var(--ring)]">
                     {adminTreeNodes.slice(0, 200).map((n: any) => (
-                      <div key={n.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                        <div className="truncate">
+                      <div key={n.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <div className="min-w-0 truncate">
                           <div className="font-medium text-foreground">{n.username}</div>
                           <div className="text-xs text-subtext">L{n.depth} · {n.referrerCode}</div>
                         </div>
-                        <div className="text-xs text-subtext">{n.email}</div>
+                        <div className="max-w-[45%] truncate text-xs text-subtext">{n.email}</div>
                       </div>
                     ))}
                   </div>

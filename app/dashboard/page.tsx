@@ -1214,10 +1214,10 @@ export default function UserDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground overflow-x-hidden max-w-[100vw]">
-      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 overflow-x-hidden">
-        <div className="flex items-center justify-between gap-3 w-full">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-transparent text-foreground">
+      <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6">
+        <div className="flex w-full min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={handleMenuToggle}
@@ -1235,19 +1235,19 @@ export default function UserDashboardPage() {
             >
               {sidebarCollapsed ? "›" : "‹"}
             </button>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <img src="/logo.svg" alt="Logo" className="h-7 w-auto rounded-md ring-1 ring-ring" />
               </div>
           </div>
-          <div className="relative flex items-center gap-2" ref={userMenuRef}>
+          <div className="relative flex min-w-0 items-center gap-2" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setUserMenuOpen(!userMenuOpen)}
               className="flex items-center gap-2 rounded-2xl p-1.5 transition hover:bg-muted"
             >
-              <div className="text-right">
+              <div className="min-w-0 text-right">
                 <div className="flex items-center justify-end gap-2">
-                  <div className="text-sm font-medium">{profile?.username ?? "User"}</div>
+                  <div className="max-w-[120px] truncate text-sm font-medium sm:max-w-[180px]">{profile?.username ?? "User"}</div>
                   {referralGate?.state === "unverified" ? (
                     <span className="hidden xs:inline-block rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-semibold text-white">
                       UNVERIFIED {gateTime}
@@ -1258,7 +1258,7 @@ export default function UserDashboardPage() {
                     </span>
                   ) : null}
                 </div>
-                <div className="text-[10px] sm:text-xs text-subtext">
+                <div className="truncate text-[10px] sm:text-xs text-subtext">
                   {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "-"}
                 </div>
               </div>
@@ -1317,7 +1317,7 @@ export default function UserDashboardPage() {
 
         <div className={`mt-6 grid gap-6 w-full max-w-full overflow-hidden ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
           {!sidebarCollapsed && (
-          <aside className="hidden lg:block">
+          <aside className="hidden min-w-0 lg:block">
             <div className="rounded-3xl bg-card p-3 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Menu</div>
               <div className="mt-1 grid gap-1">
@@ -1460,11 +1460,11 @@ export default function UserDashboardPage() {
           )}
           
           <div className="lg:hidden">
-            <div className="rounded-3xl bg-card p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
+            <div className="min-w-0 rounded-3xl bg-card p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="text-xs text-subtext">Referral Link</div>
               {referralGate?.state === "unverified" ? (
                 <>
-                  <div className="mt-2 truncate rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                  <div className="mt-2 break-all rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
                     Verify your account to unlock
                   </div>
                   <button
@@ -1587,12 +1587,12 @@ export default function UserDashboardPage() {
                           <div className="text-sm font-semibold">My Upline</div>
                         </div>
                         <div className="mt-4">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
                             {uplineNodes.map((n: any, idx: number) => (
-                              <div key={n.id} className="flex items-center gap-3 w-full sm:w-auto">
-                                <div className="flex flex-1 items-center justify-between gap-3 rounded-2xl bg-muted px-4 py-3 ring-1 ring-ring text-sm">
-                                  <span className="font-medium text-foreground truncate">{n.username}</span>
-                                  <span className="font-medium text-primary whitespace-nowrap">ID: {n.referrerCode}</span>
+                              <div key={n.id} className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+                                <div className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-2xl bg-muted px-4 py-3 text-sm ring-1 ring-ring">
+                                  <span className="truncate font-medium text-foreground">{n.username}</span>
+                                  <span className="max-w-[50%] truncate font-medium text-primary">ID: {n.referrerCode}</span>
                                 </div>
                                 {idx < uplineNodes.length - 1 && (
                                   <span className="hidden sm:inline text-xl text-subtext">→</span>
@@ -1604,7 +1604,7 @@ export default function UserDashboardPage() {
                       </div>
                     ) : null}
                     <div className="hidden lg:block rounded-2xl bg-card p-5 ring-1 ring-ring">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="text-sm font-semibold">My Team Tree</div>
                         <div className="text-xs text-subtext">{teamNodes.length} members</div>
                       </div>
@@ -1623,14 +1623,14 @@ export default function UserDashboardPage() {
                       <div className="mt-4 max-h-[260px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                         <div className="divide-y divide-[color:var(--ring)]">
                           {teamNodes.slice(0, 40).map((n: any) => (
-                            <div key={n.id} className="flex flex-col xs:flex-row xs:items-center justify-between gap-1 xs:gap-3 px-4 py-3 text-sm">
-                              <div className="truncate">
-                                <div className="font-medium text-foreground">{n.email === COMPANY_ADMIN_EMAIL ? "Admin" : n.username}</div>
-                                <div className="text-[10px] sm:text-xs text-subtext">
+                            <div key={n.id} className="flex min-w-0 flex-col justify-between gap-1 px-4 py-3 text-sm xs:flex-row xs:items-center xs:gap-3">
+                              <div className="min-w-0 truncate">
+                                <div className="truncate font-medium text-foreground">{n.email === COMPANY_ADMIN_EMAIL ? "Admin" : n.username}</div>
+                                <div className="truncate text-[10px] sm:text-xs text-subtext">
                                   L{n.depth} · {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? n.referrerCode : "—"}
                                 </div>
                               </div>
-                              <div className="text-[10px] sm:text-xs text-subtext truncate">{n.email}</div>
+                              <div className="truncate text-[10px] sm:text-xs text-subtext">{n.email}</div>
                             </div>
                           ))}
                         </div>
@@ -1683,8 +1683,8 @@ export default function UserDashboardPage() {
                               <div className="rounded-xl bg-card px-3 py-2 text-xs ring-1 ring-ring">No members at this level</div>
                             ) : (
                               members.slice(0, 200).map((n: any) => (
-                                <div key={n.id} className="flex items-center justify-between py-1">
-                                  <span className="font-medium text-foreground">{n.username ?? "-"}</span>
+                                <div key={n.id} className="flex min-w-0 items-center justify-between gap-3 py-1">
+                                  <span className="truncate font-medium text-foreground">{n.username ?? "-"}</span>
                                   {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? (
                                     <button
                                       type="button"
@@ -1703,7 +1703,7 @@ export default function UserDashboardPage() {
                                       className="inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-xs text-subtext ring-1 ring-ring transition hover:text-foreground"
                                       aria-label="Copy referral code"
                                     >
-                                      <span>{n.referrerCode ?? "-"}</span>
+                                      <span className="max-w-[100px] truncate">{n.referrerCode ?? "-"}</span>
                                       <span className="text-primary">Copy</span>
                                     </button>
                                   ) : (
