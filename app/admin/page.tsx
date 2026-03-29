@@ -169,7 +169,7 @@ function AdminLoginForm() {
 }
 
 function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], origin: string, onCopyMessage: (message: string) => void }) {
-  const [w, setW] = useState(800);
+  const [w, setW] = useState(320);
   const ref = (typeof window !== "undefined" ? (document.createElement("div") as HTMLDivElement) : null);
   useEffect(() => {
     const update = () => {
@@ -234,7 +234,7 @@ function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], orig
   }
 
   return (
-    <div id="admin-tree-canvas" className="relative mt-5 w-full">
+    <div id="admin-tree-canvas" className="relative mt-5 w-full overflow-hidden">
       <svg width={svgW} height={svgH} className="block" style={{ maxWidth: "100%" }}>
         {lines.map((ln, idx) => (
           <line key={idx} x1={ln.x1} y1={ln.y1} x2={ln.x2} y2={ln.y2} stroke="var(--ring)" strokeWidth={1.5} />
@@ -419,8 +419,8 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground">
-      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6">
+    <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-transparent text-foreground">
+      <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button

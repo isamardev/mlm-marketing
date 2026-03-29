@@ -366,9 +366,9 @@ function HomeContent() {
   const isSignupForm = authMode === "signup" && signupStep === "form";
 
   return (
-    <div className="min-h-screen bg-transparent font-sans text-foreground selection:bg-primary selection:text-white">
+    <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-transparent font-sans text-foreground selection:bg-primary selection:text-white">
       <section className="relative isolate overflow-hidden">
-        <div className="relative mx-auto max-w-7xl px-6 pt-12 pb-12 sm:pt-14 sm:pb-16">
+        <div className="relative mx-auto max-w-7xl overflow-x-hidden px-4 pt-12 pb-12 sm:px-6 sm:pt-14 sm:pb-16">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
@@ -477,7 +477,7 @@ function HomeContent() {
         </div>
       </section>
 
-      <section id="levels" className="mx-auto max-w-7xl px-6 pb-24 mt-16 sm:mt-24">
+      <section id="levels" className="mx-auto mt-16 max-w-7xl px-4 pb-24 sm:mt-24 sm:px-6">
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -549,7 +549,7 @@ function HomeContent() {
         </div>
       </section>
 
-      <section id="how-it-works" className="mx-auto max-w-7xl px-6 pb-24">
+      <section id="how-it-works" className="mx-auto max-w-7xl px-4 pb-24 sm:px-6">
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
           <h2 className="text-2xl font-semibold">How It Works</h2>
           <div className="mt-6 grid gap-6 sm:grid-cols-3">
@@ -577,7 +577,7 @@ function HomeContent() {
         </div>
       </section>
 
-      <section id="faqs" className="mx-auto max-w-7xl px-6 pb-24">
+      <section id="faqs" className="mx-auto max-w-7xl px-4 pb-24 sm:px-6">
         <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
           <h2 className="text-2xl font-semibold">FAQs</h2>
           <div className="mt-6">
@@ -608,7 +608,7 @@ function HomeContent() {
         </div>
       </section>
 
-      <section id="testimonials" className="mx-auto max-w-7xl px-6 pb-24">
+      <section id="testimonials" className="mx-auto max-w-7xl px-4 pb-24 sm:px-6">
         <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-ring sm:p-8">
           <h2 className="text-2xl font-semibold">Testimonials</h2>
           <div className="mt-6 relative overflow-hidden rounded-2xl bg-muted ring-1 ring-ring">
@@ -1221,7 +1221,7 @@ function TreePreview({ depth }: { depth: number }) {
     }
   }
   return (
-    <div ref={ref} className="relative mt-5 w-full">
+    <div ref={ref} className="relative mt-5 w-full overflow-hidden">
       <svg width={svgW} height={svgH} className="block" style={{ maxWidth: "100%" }}>
         {lines.map((ln, idx) => (
           <line

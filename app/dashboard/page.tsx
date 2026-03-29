@@ -740,7 +740,7 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
   }
 
   return (
-    <div ref={ref} className="relative mt-5 w-full">
+    <div ref={ref} className="relative mt-5 w-full overflow-hidden">
       <svg width={svgW} height={svgH} className="block" style={{ maxWidth: "100%" }}>
         {lines.map((ln, idx) => (
           <line
