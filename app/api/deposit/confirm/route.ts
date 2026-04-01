@@ -41,10 +41,10 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    const result = await runFixedPayoutEngine({
-      sourceUserId: parsed.data.sourceUserId,
-      depositAmount: parsed.data.amount,
-      note: parsed.data.note ?? "Demo deposit",
+    // Increment user balance
+    await db.user.update({
+      where: { id: parsed.data.sourceUserId },
+      data: { balance: { increment: new Prisma.Decimal(parsed.data.amount.toFixed(2)) } },
     });
 
     await db.deposit.update({
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       data: { status: "confirmed", verifiedAt: new Date() },
     });
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Deposit confirmation failed" }, { status: 500 });
   }

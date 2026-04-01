@@ -11,23 +11,28 @@ export async function GET() {
     }
 
     const db = getDb();
-    const users = await db.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        phone: true,
-        country: true,
-        balance: true,
-        withdrawBalance: true,
-        status: true,
-        createdAt: true,
-        referredById: true,
-        securityCode: true,
-        _count: { select: { referrals: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const [users, p2pTransactions] = await Promise.all([
+      db.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          phone: true,
+          country: true,
+          balance: true,
+          status: true,
+          createdAt: true,
+          referredById: true,
+          securityCode: true,
+          _count: { select: { referrals: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      db.transaction.findMany({
+        where: { type: "commission" },
+        select: { userId: true, amount: true },
+      }),
+    ]);
 
     // Try to get withdrawBalance for all these users via raw SQL safely
     const withdrawMap = new Map<string, number>();
@@ -57,35 +62,14 @@ export async function GET() {
         SELECT d."rootId", c.id AS "nodeId", d.depth + 1
         FROM downline d
         JOIN "User" c ON c."referredById" = d."nodeId"
-        WHERE d.depth < 20
+        WHERE d.depth < 33
       )
       SELECT "rootId", COUNT(*) AS "downlineCount"
       FROM downline
       GROUP BY "rootId"
     `);
 
-    const ids = users.map((user) => user.id);
-    const deposits = ids.length
-      ? await db.deposit.findMany({
-          where: {
-            userId: { in: ids },
-            status: "confirmed",
-          },
-          select: {
-            userId: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "asc" },
-        })
-      : [];
-
     const downlineMap = new Map(downlineRows.map((row) => [row.rootId, Number(row.downlineCount ?? 0)]));
-    const depositsByUser = new Map<string, Date[]>();
-    for (const deposit of deposits) {
-      const list = depositsByUser.get(deposit.userId) ?? [];
-      list.push(deposit.createdAt);
-      depositsByUser.set(deposit.userId, list);
-    }
 
     const nowMs = Date.now();
     const expiredIds: string[] = [];
@@ -93,16 +77,14 @@ export async function GET() {
     const safe = users.map((user) => {
       const createdAtMs = user.createdAt.getTime();
       const expiresAtMs = createdAtMs + 24 * 60 * 60 * 1000;
-      const userDeposits = depositsByUser.get(user.id) ?? [];
-      const verified = user.referredById
-        ? userDeposits.some((createdAt) => createdAt.getTime() <= expiresAtMs)
-        : false;
+      
+      const isActivated = user.status === "active" || user.status === "admin";
 
       let verifyStatus: string | null = null;
       let secondsLeft = 0;
 
-      if (user.referredById) {
-        if (verified) {
+      if (user.referredById && user.status !== "admin") {
+        if (isActivated) {
           verifyStatus = "verified";
         } else if (nowMs < expiresAtMs) {
           verifyStatus = "unverified";

@@ -15,7 +15,7 @@ const toUSD = (n: number) =>
     Number.isFinite(n) ? n : 0,
   );
 
-function WalletSection({ balance, userId }: { balance: number, userId: string }) {
+function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number, userId: string, onHistoryRedirect?: () => void }) {
   const [depositAmount, setDepositAmount] = useState<string>("10");
   const [step, setStep] = useState<1 | 2>(1);
   const [uiMsg, setUiMsg] = useState<string>("");
@@ -35,6 +35,13 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
         const data = await res.json();
         if (res.ok && Number(data?.createdForUser || 0) > 0) {
           toast.success("Payment detected");
+          // Refresh full dashboard data
+          try {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("deposit:updated"));
+            }
+          } catch {}
+          if (onHistoryRedirect) onHistoryRedirect();
           clearInterval(autoPollRef.current);
           autoPollRef.current = null;
         }
@@ -50,7 +57,7 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
         autoPollRef.current = null;
       }
     };
-  }, [step, userId]);
+  }, [step, userId, onHistoryRedirect]);
 
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
@@ -147,6 +154,7 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
                   userId={userId}
                   fullWidth
                   label="Pay Demo"
+                  onSuccess={onHistoryRedirect}
                 />
               </div>
             </div>
@@ -178,9 +186,16 @@ function WalletSection({ balance, userId }: { balance: number, userId: string })
 
 function WithdrawSection({ profile }: { profile: any }) {
   const [withdrawAmount, setWithdrawAmount] = useState<string>("10");
-  const [withdrawAddress, setWithdrawAddress] = useState<string>("");
+  const [withdrawAddress, setWithdrawAddress] = useState<string>(profile?.permanentWithdrawAddress || "");
   const [securityCode, setSecurityCode] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
+
+  // Update address if profile changes (e.g. after saving it in settings)
+  useEffect(() => {
+    if (profile?.permanentWithdrawAddress) {
+      setWithdrawAddress(profile.permanentWithdrawAddress);
+    }
+  }, [profile?.permanentWithdrawAddress]);
 
   const onWithdraw = async () => {
     setMsg("");
@@ -204,7 +219,7 @@ function WithdrawSection({ profile }: { profile: any }) {
       const res = await fetch("/api/user/withdraw-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: amt, address: withdrawAddress, securityCode: securityCode.trim() }),
+        body: JSON.stringify({ amount: amt, address: withdrawAddress.trim(), securityCode: securityCode.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -215,8 +230,16 @@ function WithdrawSection({ profile }: { profile: any }) {
       setMsg("Withdrawal requested");
       toast.success("Withdrawal requested");
       setWithdrawAmount("10");
-      setWithdrawAddress("");
+      // Don't clear address if it's permanent
+      if (!profile?.permanentWithdrawAddress) {
+        setWithdrawAddress("");
+      }
       setSecurityCode("");
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
     } catch {
       setMsg("Withdrawal request failed");
       toast.error("Withdrawal request failed");
@@ -245,9 +268,13 @@ function WithdrawSection({ profile }: { profile: any }) {
           <input
             value={withdrawAddress}
             onChange={(e) => setWithdrawAddress(e.target.value.trim())}
-            className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+            readOnly={!!profile?.permanentWithdrawAddress}
+            className={`h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 ${profile?.permanentWithdrawAddress ? "cursor-not-allowed bg-muted opacity-80" : ""}`}
             placeholder="0x..."
           />
+          {profile?.permanentWithdrawAddress && (
+            <span className="mt-1 px-1 text-[10px] text-green-500 font-medium italic">✓ Permanent withdrawal address applied</span>
+          )}
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-subtext">Security Code</span>
@@ -279,7 +306,7 @@ function MyProfileSection({
 }: { 
   profile: any, 
   onProfileUpdate?: (updatedData: any) => void,
-  tab: "profile" | "security"
+  tab: "profile" | "security" | "withdrawAddress"
 }) {
   const [uiMessage, setUiMessage] = useState("");
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -288,6 +315,9 @@ function MyProfileSection({
   const [showSecurityCode, setShowSecurityCode] = useState(false);
   const [passwordForSecurityCode, setPasswordForSecurityCode] = useState("");
   const [retrievedSecurityCode, setRetrievedSecurityCode] = useState<string | null>(null);
+  
+  const [isSavingWithdrawAddress, setIsSavingWithdrawAddress] = useState(false);
+  const [newWithdrawAddress, setNewWithdrawAddress] = useState("");
 
   const [profileData, setProfileData] = useState({
     username: profile?.username || "",
@@ -308,7 +338,59 @@ function MyProfileSection({
     setRetrievedSecurityCode(null);
     setPasswordForSecurityCode("");
     setUiMessage("");
+    setNewWithdrawAddress("");
   }, [tab]);
+
+  const handleWithdrawAddressSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(newWithdrawAddress)) {
+      setUiMessage("Invalid USDT (BEP20) address");
+      toast.error("Invalid USDT (BEP20) address");
+      return;
+    }
+
+    setIsSavingWithdrawAddress(true);
+    setUiMessage("");
+
+    try {
+      const res = await fetch("/api/user/update-withdraw-address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: newWithdrawAddress.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const errMsg = data?.error || "Failed to save address";
+        setUiMessage(errMsg);
+        toast.error(errMsg);
+        
+        // If the API says it's already set, update the profile state with the returned address
+        if (data.address && onProfileUpdate) {
+          onProfileUpdate({ permanentWithdrawAddress: data.address });
+        }
+        
+        setIsSavingWithdrawAddress(false);
+        return;
+      }
+
+      toast.success("Withdrawal address saved permanently");
+      if (onProfileUpdate) {
+        onProfileUpdate({ permanentWithdrawAddress: newWithdrawAddress.trim() });
+      }
+      setIsSavingWithdrawAddress(false);
+      // Refresh full dashboard data
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
+    } catch (error) {
+      setUiMessage("Failed to save address");
+      toast.error("Failed to save address");
+      setIsSavingWithdrawAddress(false);
+    }
+  };
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,6 +451,12 @@ function MyProfileSection({
       setProfileData(prev => ({ ...prev, currentPassword: "", newPassword: "", confirmPassword: "" }));
       setIsEditingProfile(false);
       setIsUpdatingProfile(false);
+      // Refresh full dashboard data
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
     } catch (error) {
       setUiMessage("Update failed");
       toast.error("Update failed");
@@ -406,6 +494,12 @@ function MyProfileSection({
       if (onProfileUpdate) {
         onProfileUpdate({ securityCode: "exists" });
       }
+      // Refresh full dashboard data
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
     } catch (error) {
       setUiMessage("Security code update failed");
       toast.error("Security code update failed");
@@ -441,7 +535,9 @@ function MyProfileSection({
   return (
     <div className="space-y-6">
       <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-        <div className="text-sm font-semibold">{tab === "profile" ? "Update Profile" : "Security Code"}</div>
+        <div className="text-sm font-semibold">
+          {tab === "profile" ? "Update Profile" : tab === "security" ? "Security Code" : "Withdrawal Address"}
+        </div>
         
         {uiMessage && (
           <div className="mt-4 rounded-2xl bg-muted p-4 text-sm text-foreground ring-1 ring-ring">
@@ -450,6 +546,57 @@ function MyProfileSection({
         )}
         
         <div className="mt-6 grid gap-4">
+          {tab === "withdrawAddress" && (
+            <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
+              <div className="text-sm font-medium">Permanent Withdrawal Address</div>
+              
+              {profile?.permanentWithdrawAddress ? (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-1">
+                    <span className="text-[10px] uppercase tracking-wider text-subtext px-1">Current Saved Address</span>
+                    <div className="flex items-center justify-between rounded-xl bg-card px-4 py-4 text-sm ring-1 ring-ring shadow-inner">
+                      <span className="font-mono font-bold text-primary break-all">{profile.permanentWithdrawAddress}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl bg-green-500/10 p-4 text-xs text-green-600 ring-1 ring-green-500/20">
+                    <svg className="h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span>This address is permanently locked to your account for all future withdrawals.</span>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleWithdrawAddressSave} className="mt-4 space-y-3">
+                  <div className="text-xs text-subtext mb-2">This address will be locked once saved and used for all your withdrawals.</div>
+                  <label className="block text-[10px] uppercase tracking-wider text-subtext mb-1 px-1">USDT Address (BEP20)</label>
+                  <input
+                    type="text"
+                    placeholder="0x..."
+                    value={newWithdrawAddress}
+                    onChange={(e) => setNewWithdrawAddress(e.target.value.trim())}
+                    className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    required
+                  />
+                  <div className="rounded-xl bg-yellow-500/10 p-3 text-xs text-yellow-600 ring-1 ring-yellow-500/20 flex items-start gap-2">
+                    <svg className="h-4 w-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>Important: You can only set this address ONCE. Make sure it is a valid BEP20 USDT address.</span>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSavingWithdrawAddress}
+                      className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {isSavingWithdrawAddress ? "Saving..." : "Save Address Permanently"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
           {tab === "profile" && (
             <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
               <div className="text-sm font-medium">Account Settings</div>
@@ -881,13 +1028,41 @@ export default function UserDashboardPage() {
   const { data: session, status } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [active, setActive] = useState<"home" | "network" | "wallet" | "settings">("home");
+  const [active, setActive] = useState<"home" | "network" | "wallet" | "settings" | "income" | "activation">("home");
+  const [activating, setActivating] = useState(false);
+
+  const onActivate = async () => {
+    if (profile?.status === "active" || profile?.status === "admin") {
+      toast.info("Account is already active");
+      return;
+    }
+    setActivating(true);
+    try {
+      const res = await fetch("/api/user/activate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Activation failed");
+        return;
+      }
+      toast.success("Account activated successfully!");
+      // Refresh data
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
+    } catch {
+      toast.error("Activation failed");
+    } finally {
+      setActivating(false);
+    }
+  };
   const [walletOpen, setWalletOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [walletTab, setWalletTab] = useState<
     "deposit" | "depositHistory" | "withdraw" | "withdrawHistory" | "p2pTransfer" | "p2pHistory" | "internalTransfer" | "commissions"
   >("deposit");
-  const [profileTab, setProfileTab] = useState<"profile" | "security">("profile");
+  const [profileTab, setProfileTab] = useState<"profile" | "security" | "withdrawAddress">("profile");
   const [level, setLevel] = useState(6);
   const maxLevel = 33;
 
@@ -897,6 +1072,7 @@ export default function UserDashboardPage() {
   const [gateSecondsLeft, setGateSecondsLeft] = useState<number>(0);
   const [directReferrals, setDirectReferrals] = useState<number>(0);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [recentDeposits, setRecentDeposits] = useState<any[]>([]);
   const [refStats, setRefStats] = useState<{ total: number; levels: Record<string, number> } | null>(null);
   const [teamNodes, setTeamNodes] = useState<any[] | null>(null);
   const [uplineNodes, setUplineNodes] = useState<any[] | null>(null);
@@ -954,10 +1130,12 @@ export default function UserDashboardPage() {
       toast.success(`Transfer to ${transferTarget === "withdraw" ? "withdraw" : "USDT"} wallet successful`);
       setInternalTransferAmount("");
       setP2pSecurityCode("");
-      // Refresh profile to get new balances
-      const dashRes = await fetch("/api/user/dashboard", { cache: "no-store" });
-      const dash = await dashRes.json();
-      if (dashRes.ok && dash?.profile) setProfile(dash.profile);
+      // Refresh data
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("deposit:updated"));
+        }
+      } catch {}
     } catch {
       setInternalTransferMsg("Transfer failed");
       toast.error("Transfer failed");
@@ -1074,39 +1252,105 @@ export default function UserDashboardPage() {
     setOrigin(o);
   }, []);
 
-  useEffect(() => {
-    const handler = async () => {
-      try {
-        const res = await fetch("/api/user/dashboard", { cache: "no-store" });
-        const dash = await res.json();
-        if (!res.ok) {
-          if (res.status === 403) {
-            await signOut({ callbackUrl: "/" });
-            return;
-          }
+  const refreshDashboardData = async () => {
+    if (status === "loading" || !session?.user?.id) return;
+    try {
+      // 1. Core Dashboard Data (Balances, Transactions, Status)
+      const res = await fetch("/api/user/dashboard", { cache: "no-store" });
+      const dash = await res.json();
+      if (!res.ok) {
+        if (res.status === 403) {
+          await signOut({ callbackUrl: "/" });
           return;
         }
-        if (!dash?.profile) return;
+        return;
+      }
+      if (dash?.profile) {
         setProfile(dash.profile);
+        setCurrentLevel(Number(dash?.currentLevel ?? 0));
         setReferralGate(dash.referralGate ?? null);
         setGateSecondsLeft(Number(dash?.referralGate?.secondsLeft ?? 0));
         setDirectReferrals(dash.directReferrals ?? 0);
         setRecentTransactions(dash.recentTransactions ?? []);
+        setRecentDeposits(dash.recentDeposits ?? []);
         setTotals({
           deposits: Number(dash?.depositTotal ?? 0),
           withdrawals: Number(dash?.withdrawalTotal ?? 0),
         });
-      } catch {}
-    };
-    if (typeof window !== "undefined") {
-      window.addEventListener("deposit:updated", handler as any);
+      }
+
+      // 2. Stats & Notifications (Quick fetches)
+      const [statsRes, notiRes] = await Promise.all([
+        fetch("/api/user/referral-stats", { cache: "no-store" }),
+        fetch("/api/user/notifications", { cache: "no-store" }),
+      ]);
+      
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        if (stats?.levels) setRefStats(stats);
+      }
+      
+      if (notiRes.ok) {
+        const noti = await notiRes.json();
+        if (Array.isArray(noti?.items)) {
+          setNotifications(noti.items);
+          setUnread(noti.unread ?? 0);
+        }
+      }
+
+      // 3. Team/Upline Data (Fetch only if active or empty)
+      if (!teamNodes || !uplineNodes || active === "network" || active === "home") {
+        const [teamRes, uplineRes] = await Promise.all([
+          fetch("/api/user/my-team", { cache: "no-store" }),
+          fetch("/api/user/upline", { cache: "no-store" }),
+        ]);
+        if (teamRes.ok) {
+          const team = await teamRes.json();
+          if (team?.nodes) setTeamNodes(team.nodes);
+        }
+        if (uplineRes.ok) {
+          const upline = await uplineRes.json();
+          if (upline?.nodes) setUplineNodes(upline.nodes);
+        }
+      }
+
+      // 4. Tab-specific data (Fetch if active)
+      if (active === "wallet" && walletTab === "p2pHistory") {
+        const res = await fetch("/api/user/p2p-history", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok) setP2pItems(Array.isArray(data?.items) ? data.items : []);
+      }
+      
+      if ((active === "wallet" && walletTab === "commissions") || active === "income") {
+        const res = await fetch("/api/user/commissions", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok) setCommissions(Array.isArray(data?.items) ? data.items : []);
+      }
+    } catch (err) {
+      console.error("Dashboard refresh error:", err);
     }
+  };
+
+  useEffect(() => {
+    if (status === "loading" || !session?.user?.id) return;
+    
+    refreshDashboardData();
+    const interval = setInterval(refreshDashboardData, 3000); // Master poll every 3 seconds for near real-time feel
+    
+    const handler = () => refreshDashboardData();
+    if (typeof window !== "undefined") {
+      window.addEventListener("deposit:updated", handler);
+      window.addEventListener("profile:updated", handler);
+    }
+    
     return () => {
+      clearInterval(interval);
       if (typeof window !== "undefined") {
-        window.removeEventListener("deposit:updated", handler as any);
+        window.removeEventListener("deposit:updated", handler);
+        window.removeEventListener("profile:updated", handler);
       }
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, status]);
 
   useEffect(() => {
     if (!referralGate || referralGate.state !== "unverified") return;
@@ -1144,7 +1388,7 @@ export default function UserDashboardPage() {
         setCommissionsLoading(false);
       }
     };
-    if (active === "wallet" && walletTab === "commissions") {
+    if ((active === "wallet" && walletTab === "commissions") || active === "income") {
       load();
     }
   }, [active, walletTab]);
@@ -1164,45 +1408,6 @@ export default function UserDashboardPage() {
       router.replace("/");
       return;
     }
-
-    const load = async () => {
-      const dashRes = await fetch("/api/user/dashboard", { cache: "no-store" });
-      const dash = await dashRes.json();
-      if (!dashRes.ok) {
-        if (dashRes.status === 403) {
-          await signOut({ callbackUrl: "/" });
-          return;
-        }
-        throw new Error("Dashboard load failed");
-      }
-      if (dash?.profile) {
-        setProfile(dash.profile);
-        setCurrentLevel(Number(dash?.currentLevel ?? 0));
-        setReferralGate(dash.referralGate ?? null);
-        setGateSecondsLeft(Number(dash?.referralGate?.secondsLeft ?? 0));
-        setDirectReferrals(dash.directReferrals ?? 0);
-        setRecentTransactions(dash.recentTransactions ?? []);
-        setTotals({
-          deposits: Number(dash?.depositTotal ?? 0),
-          withdrawals: Number(dash?.withdrawalTotal ?? 0),
-        });
-      }
-
-      const [stats, noti, team, upline] = await Promise.all([
-        fetch("/api/user/referral-stats", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/user/notifications", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/user/my-team", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/user/upline", { cache: "no-store" }).then((r) => r.json()),
-      ]);
-      if (stats?.levels) setRefStats(stats);
-      if (Array.isArray(noti?.items)) {
-        setNotifications(noti.items);
-        setUnread(noti.unread ?? 0);
-      }
-      if (team?.nodes) setTeamNodes(team.nodes);
-      if (upline?.nodes) setUplineNodes(upline.nodes);
-    };
-    load().catch(() => setUiMessage("Failed to load dashboard data"));
   }, [router, session?.user?.id, status]);
 
   const networkRows = useMemo(() => {
@@ -1366,6 +1571,26 @@ export default function UserDashboardPage() {
                   <span>My Network</span>
                   {active === "network" ? <span className="text-primary">●</span> : null}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { setActive("income"); setWalletOpen(false); setProfileOpen(false); }}
+                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                    active === "income" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <span>Income History</span>
+                  {active === "income" ? <span className="text-primary">●</span> : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActive("activation"); setWalletOpen(false); setProfileOpen(false); }}
+                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                    active === "activation" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <span>Activation Account</span>
+                  {active === "activation" ? <span className="text-primary">●</span> : null}
+                </button>
                 <div className="grid gap-1">
                   <button
                     type="button"
@@ -1388,7 +1613,6 @@ export default function UserDashboardPage() {
                         { key: "p2pTransfer", label: "P2P Fund Transfer" },
                         { key: "internalTransfer", label: "Transfer to Withdraw Wallet" },
                         { key: "p2pHistory", label: "P2P History" },
-                        { key: "commissions", label: "Income History" },
                       ].map((i) => (
                         <button
                           key={i.key}
@@ -1423,6 +1647,7 @@ export default function UserDashboardPage() {
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "profile", label: "Update Profile" },
+                        { key: "withdrawAddress", label: "Withdrawal Address" },
                         { key: "security", label: "Security Code" },
                       ].map((i) => (
                         <button
@@ -1778,286 +2003,378 @@ export default function UserDashboardPage() {
               </div>
             )}
 
-            {active === "wallet" && (
-              <>
-                {walletTab === "deposit" && (
-                  <WalletSection 
-                    balance={profile?.balance ?? 0} 
-                    userId={profile?.id ?? ""}
-                  />
-                )}
-                {walletTab === "depositHistory" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">Deposit History</div>
-                    <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                      <div className="min-w-[400px]">
-                        <div className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                          <div>Hash</div>
-                          <div>Amount</div>
-                          <div>Date</div>
+            {active === "wallet" && walletTab === "deposit" && (
+              <WalletSection 
+                balance={profile?.balance ?? 0} 
+                userId={profile?.id ?? ""}
+                onHistoryRedirect={() => {
+                  setWalletTab("depositHistory");
+                }}
+              />
+            )}
+            {active === "wallet" && walletTab === "depositHistory" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">Deposit History</div>
+                <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
+                  <div className="min-w-[500px]">
+                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                      <div>Hash</div>
+                      <div>Amount</div>
+                      <div>Status</div>
+                      <div>Date</div>
+                    </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {recentDeposits.map((t: any) => (
+                        <div key={t.id} className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
+                          <div className="truncate font-mono text-[10px]">{t.txHash ?? "-"}</div>
+                          <div className="font-medium text-foreground">{toUSD(Number(t.amount))}</div>
+                          <div>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${
+                              t.status === "confirmed" ? "bg-green-500/10 text-green-500 ring-green-500/20" :
+                              t.status === "pending" ? "bg-yellow-500/10 text-yellow-500 ring-yellow-500/20" :
+                              "bg-red-500/10 text-red-500 ring-red-500/20"
+                            }`}>
+                              {t.status}
+                            </span>
+                          </div>
+                          <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
                         </div>
-                        <div className="divide-y divide-[color:var(--ring)]">
-                          {recentTransactions
-                            .filter((t: any) => String(t.type).toLowerCase() === "deposit")
-                            .map((t: any) => (
-                              <div key={t.id} className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 px-4 py-4 text-sm">
-                                <div className="truncate">{t.txHash ?? "-"}</div>
-                                <div className="font-medium text-foreground">{String(t.amount)}</div>
-                                <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
-                              </div>
-                            ))}
-                          {recentTransactions.filter((t: any) => String(t.type).toLowerCase() === "deposit").length === 0 && (
-                            <div className="px-4 py-6 text-center text-sm text-subtext">No deposits yet</div>
-                          )}
-                        </div>
-                      </div>
+                      ))}
+                      {recentDeposits.length === 0 && (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No deposits yet</div>
+                      )}
                     </div>
                   </div>
-                )}
-                {walletTab === "withdraw" && <WithdrawSection profile={profile} />}
-                {walletTab === "withdrawHistory" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">Withdrawal History</div>
-                    <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                      <div className="min-w-[400px]">
-                        <div className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                          <div>Hash</div>
-                          <div>Amount</div>
-                          <div>Date</div>
-                        </div>
-                        <div className="divide-y divide-[color:var(--ring)]">
-                          {recentTransactions
-                            .filter((t: any) => String(t.type).toLowerCase() === "withdrawal")
-                            .map((t: any) => (
-                              <div key={t.id} className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 px-4 py-4 text-sm">
-                                <div className="truncate">{t.txHash ?? "-"}</div>
-                                <div className="font-medium text-foreground">{String(t.amount)}</div>
-                                <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
-                              </div>
-                            ))}
-                          {recentTransactions.filter((t: any) => String(t.type).toLowerCase() === "withdrawal").length === 0 && (
-                            <div className="px-4 py-6 text-center text-sm text-subtext">No withdrawals yet</div>
-                          )}
-                        </div>
-                      </div>
+                </div>
+              </div>
+            )}
+            {active === "wallet" && walletTab === "withdraw" && <WithdrawSection profile={profile} />}
+            {active === "wallet" && walletTab === "withdrawHistory" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">Withdrawal History</div>
+                <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
+                  <div className="min-w-[400px]">
+                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                      <div>Hash</div>
+                      <div>Amount</div>
+                      <div>Date</div>
+                    </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {recentTransactions
+                        .filter((t: any) => String(t.type).toLowerCase() === "withdrawal")
+                        .map((t: any) => (
+                          <div key={t.id} className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 px-4 py-4 text-sm">
+                            <div className="truncate">{t.txHash ?? "-"}</div>
+                            <div className="font-medium text-foreground">{String(t.amount)}</div>
+                            <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
+                          </div>
+                        ))}
+                      {recentTransactions.filter((t: any) => String(t.type).toLowerCase() === "withdrawal").length === 0 && (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No withdrawals yet</div>
+                      )}
                     </div>
                   </div>
-                )}
-                {walletTab === "p2pTransfer" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">P2P Fund Transfer</div>
-                    <div className="mt-1 text-xs text-subtext">Transfer USDT between members</div>
-                    <div className="mt-4 grid gap-3 sm:max-w-md">
-                      <label className="grid gap-1">
-                        <span className="text-xs text-subtext">Recipient (Email / Referrer Code / Username)</span>
-                        <input
-                          value={p2pRecipient}
-                          onChange={(e) => setP2pRecipient(e.target.value)}
-                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="user@example.com or ABC123"
-                        />
-                      </label>
-                      <label className="grid gap-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-subtext">Amount (USDT)</span>
-                          <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.usdtBalance ?? 0))}</span>
-                        </div>
-                        <input
-                          value={p2pAmount}
-                          onChange={(e) => setP2pAmount(e.target.value)}
-                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="10"
-                        />
-                      </label>
-                      <label className="grid gap-1">
-                        <span className="text-xs text-subtext">Security Code</span>
-                        <input
-                          type="password"
-                          value={p2pSecurityCode}
-                          onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
-                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="Your Security Code"
-                        />
-                      </label>
+                </div>
+              </div>
+            )}
+            {active === "wallet" && walletTab === "p2pTransfer" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">P2P Fund Transfer</div>
+                <div className="mt-1 text-xs text-subtext">Transfer USDT between members</div>
+                <div className="mt-4 grid gap-3 sm:max-w-md">
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">Recipient (Email / Referrer Code / Username)</span>
+                    <input
+                      value={p2pRecipient}
+                      onChange={(e) => setP2pRecipient(e.target.value)}
+                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="user@example.com or ABC123"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-subtext">Amount (USDT)</span>
+                      <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.usdtBalance ?? 0))}</span>
+                    </div>
+                    <input
+                      value={p2pAmount}
+                      onChange={(e) => setP2pAmount(e.target.value)}
+                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="10"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">Security Code</span>
+                    <input
+                      type="password"
+                      value={p2pSecurityCode}
+                      onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
+                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="Your Security Code"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onP2PTransfer}
+                    className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Send
+                  </button>
+                  {p2pMsg ? (
+                    <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{p2pMsg}</div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+            {active === "wallet" && walletTab === "internalTransfer" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">Transfer Funds</div>
+                <div className="mt-1 text-xs text-subtext">Transfer from Main Balance to other wallets</div>
+                <div className="mt-4 grid gap-3 sm:max-w-md">
+                  <div className="grid gap-2">
+                    <span className="text-sm font-medium">Select Target Wallet</span>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={onP2PTransfer}
-                        className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                        onClick={() => setTransferTarget("withdraw")}
+                        className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
+                          transferTarget === "withdraw" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
+                        }`}
                       >
-                        Send
+                        Withdraw Wallet
                       </button>
-                      {p2pMsg ? (
-                        <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{p2pMsg}</div>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setTransferTarget("usdt")}
+                        className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
+                          transferTarget === "usdt" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
+                        }`}
+                      >
+                        USDT Wallet (P2P)
+                      </button>
                     </div>
                   </div>
-                )}
-                {walletTab === "internalTransfer" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">Transfer Funds</div>
-                    <div className="mt-1 text-xs text-subtext">Transfer from Main Balance to other wallets</div>
-                    <div className="mt-4 grid gap-3 sm:max-w-md">
-                      <div className="grid gap-2">
-                        <span className="text-sm font-medium">Select Target Wallet</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setTransferTarget("withdraw")}
-                            className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
-                              transferTarget === "withdraw" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
-                            }`}
-                          >
-                            Withdraw Wallet
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTransferTarget("usdt")}
-                            className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
-                              transferTarget === "usdt" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
-                            }`}
-                          >
-                            USDT Wallet (P2P)
-                          </button>
-                        </div>
-                      </div>
 
-                      <label className="grid gap-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-subtext">Amount to Transfer (USDT)</span>
-                          <span className="text-xs font-medium text-primary">Balance: {toUSD(Number(profile?.balance ?? 0))}</span>
+                  <label className="grid gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-subtext">Amount to Transfer (USDT)</span>
+                      <span className="text-xs font-medium text-primary">Balance: {toUSD(Number(profile?.balance ?? 0))}</span>
+                    </div>
+                    <input
+                      value={internalTransferAmount}
+                      onChange={(e) => setInternalTransferAmount(e.target.value)}
+                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="10"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">Security Code</span>
+                    <input
+                      type="password"
+                      value={p2pSecurityCode}
+                      onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
+                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="Your Security Code"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onInternalTransfer}
+                    className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Transfer Now
+                  </button>
+                  {internalTransferMsg ? (
+                    <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{internalTransferMsg}</div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+            {active === "wallet" && walletTab === "p2pHistory" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">P2P History</div>
+                <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
+                  <div className="min-w-[500px]">
+                    <div className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                      <div>Counterparty</div>
+                      <div>Direction</div>
+                      <div>Amount</div>
+                      <div>Date</div>
+                    </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {p2pItems.map((t: any) => (
+                        <div key={t.id} className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
+                          <div className="truncate">{t.counterparty || "-"}</div>
+                          <div className="font-medium text-foreground capitalize">{t.direction}</div>
+                          <div className="font-medium text-foreground">{Number(t.amount).toFixed(2)}</div>
+                          <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
                         </div>
-                        <input
-                          value={internalTransferAmount}
-                          onChange={(e) => setInternalTransferAmount(e.target.value)}
-                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="10"
-                        />
-                      </label>
-                      <label className="grid gap-1">
-                        <span className="text-xs text-subtext">Security Code</span>
-                        <input
-                          type="password"
-                          value={p2pSecurityCode}
-                          onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
-                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="Your Security Code"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={onInternalTransfer}
-                        className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
-                      >
-                        Transfer Now
-                      </button>
-                      {internalTransferMsg ? (
-                        <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{internalTransferMsg}</div>
-                      ) : null}
+                      ))}
+                      {p2pItems.length === 0 && (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No P2P transfers yet</div>
+                      )}
                     </div>
                   </div>
-                )}
-                {walletTab === "p2pHistory" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">P2P History</div>
-                    <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                      <div className="min-w-[500px]">
-                        <div className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                          <div>Counterparty</div>
-                          <div>Direction</div>
-                          <div>Amount</div>
-                          <div>Date</div>
-                        </div>
-                        <div className="divide-y divide-[color:var(--ring)]">
-                          {p2pItems.map((t: any) => (
-                            <div key={t.id} className="grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-2 px-4 py-4 text-sm">
-                              <div className="truncate">{t.counterparty || "-"}</div>
-                              <div className="font-medium text-foreground capitalize">{t.direction}</div>
-                              <div className="font-medium text-foreground">{Number(t.amount).toFixed(2)}</div>
-                              <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
+                </div>
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/user/p2p-history", { cache: "no-store" });
+                        const data = await res.json();
+                        if (res.ok) setP2pItems(Array.isArray(data?.items) ? data.items : []);
+                      } catch {}
+                    }}
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            )}
+            {active === "income" && (
+              <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                <div className="text-sm font-semibold">Income History</div>
+                <div className="mt-1 text-xs text-subtext">Detailed breakdown of referral earnings</div>
+                <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
+                  <div className="min-w-[600px]">
+                    <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                      <div>From User</div>
+                      <div>Level</div>
+                      <div>Amount</div>
+                      <div>Date</div>
+                    </div>
+                    <div className="divide-y divide-[color:var(--ring)]">
+                      {commissionsLoading ? (
+                        <div className="px-4 py-6 text-center text-sm text-subtext">Loading history...</div>
+                      ) : (
+                        <>
+                          {commissions.map((c: any) => (
+                            <div key={c.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition">
+                              <div className="min-w-0">
+                                <div className="font-medium text-foreground truncate">{c.fromUser}</div>
+                                <div className="text-[10px] text-subtext truncate">{c.fromEmail}</div>
+                              </div>
+                              <div className="flex items-center">
+                                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/20">
+                                  L{c.level}
+                                </span>
+                              </div>
+                              <div className="font-bold text-foreground flex items-center">{toUSD(Number(c.amount))}</div>
+                              <div className="text-subtext flex items-center">{new Date(c.date).toLocaleDateString()}</div>
                             </div>
                           ))}
-                          {p2pItems.length === 0 && (
-                            <div className="px-4 py-6 text-center text-sm text-subtext">No P2P transfers yet</div>
+                          {commissions.length === 0 && (
+                            <div className="px-4 py-6 text-center text-sm text-subtext">No commission history found</div>
                           )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 text-right">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const res = await fetch("/api/user/p2p-history", { cache: "no-store" });
-                            const data = await res.json();
-                            if (res.ok) setP2pItems(Array.isArray(data?.items) ? data.items : []);
-                          } catch {}
-                        }}
-                        className="inline-flex h-9 items-center justify-center rounded-full bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                      >
-                        Refresh
-                      </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                )}
-                {walletTab === "commissions" && (
-                  <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">Income History</div>
-                    <div className="mt-1 text-xs text-subtext">Detailed breakdown of referral earnings</div>
-                    <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                      <div className="min-w-[600px]">
-                        <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
-                          <div>From User</div>
-                          <div>Level</div>
-                          <div>Amount</div>
-                          <div>Date</div>
-                        </div>
-                        <div className="divide-y divide-[color:var(--ring)]">
-                          {commissionsLoading ? (
-                            <div className="px-4 py-6 text-center text-sm text-subtext">Loading history...</div>
-                          ) : (
-                            <>
-                              {commissions.map((c: any) => (
-                                <div key={c.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition">
-                                  <div className="min-w-0">
-                                    <div className="font-medium text-foreground truncate">{c.fromUser}</div>
-                                    <div className="text-[10px] text-subtext truncate">{c.fromEmail}</div>
-                                  </div>
-                                  <div className="flex items-center">
-                                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/20">
-                                      L{c.level}
-                                    </span>
-                                  </div>
-                                  <div className="font-bold text-foreground flex items-center">{toUSD(Number(c.amount))}</div>
-                                  <div className="text-subtext flex items-center">{new Date(c.date).toLocaleDateString()}</div>
-                                </div>
-                              ))}
-                              {commissions.length === 0 && (
-                                <div className="px-4 py-6 text-center text-sm text-subtext">No commission history found</div>
-                              )}
-                            </>
-                          )}
-                        </div>
+                </div>
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCommissionsLoading(true);
+                      try {
+                        const res = await fetch("/api/user/commissions", { cache: "no-store" });
+                        const data = await res.json();
+                        if (res.ok) setCommissions(Array.isArray(data?.items) ? data.items : []);
+                      } catch {} finally { setCommissionsLoading(false); }
+                    }}
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {active === "activation" && (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-primary uppercase tracking-wider">Starter Plan</div>
+                    <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold text-primary ring-1 ring-primary/20">POPULAR</span>
+                  </div>
+                  {referralGate?.state === "unverified" && gateSecondsLeft > 0 && (
+                    <div className="mt-4 rounded-2xl bg-yellow-500/10 p-3 ring-1 ring-yellow-500/20">
+                      <div className="text-[10px] font-medium text-yellow-600 uppercase tracking-tight">Activation Deadline</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <svg className="h-4 w-4 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm font-bold text-yellow-700 font-mono">
+                          {Math.floor(gateSecondsLeft / 3600)}h {Math.floor((gateSecondsLeft % 3600) / 60)}m {gateSecondsLeft % 60}s
+                        </span>
                       </div>
                     </div>
-                    <div className="mt-3 text-right">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setCommissionsLoading(true);
-                          try {
-                            const res = await fetch("/api/user/commissions", { cache: "no-store" });
-                            const data = await res.json();
-                            if (res.ok) setCommissions(Array.isArray(data?.items) ? data.items : []);
-                          } catch {} finally { setCommissionsLoading(false); }
-                        }}
-                        className="inline-flex h-9 items-center justify-center rounded-full bg-card px-4 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                      >
-                        Refresh
-                      </button>
+                  )}
+                  {referralGate?.state === "unverified" && gateSecondsLeft === 0 && (
+                    <div className="mt-4 rounded-2xl bg-red-500/10 p-3 ring-1 ring-red-500/20">
+                      <div className="text-[10px] font-medium text-red-600 uppercase tracking-tight">Status</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <svg className="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm font-bold text-red-700">PERIOD EXPIRED</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-4">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold text-foreground">$10</span>
+                      <span className="text-xs text-subtext">/ one-time</span>
                     </div>
                   </div>
-                )}
-              </>
+                  <div className="mt-6 space-y-3">
+                    {[
+                      "Lifetime Activation",
+                      "Unlock 20 Levels Commission",
+                      "Daily Payout Access",
+                      "Priority Support",
+                    ].map((feature, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs text-subtext">
+                        <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {feature}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-8">
+                    {profile?.status === "active" || profile?.status === "admin" ? (
+                      <div className="flex h-11 w-full items-center justify-center rounded-2xl bg-green-500/10 text-sm font-semibold text-green-500 ring-1 ring-green-500/20">
+                        ALREADY ACTIVATED
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onActivate}
+                        disabled={activating}
+                        className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-lg shadow-primary/20 ring-1 ring-primary/20 transition-all hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30 disabled:opacity-50"
+                      >
+                        {activating ? (
+                          <>
+                            <svg className="mr-2 h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Activating...
+                          </>
+                        ) : (
+                          "Activate Account"
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-3 text-center text-[10px] text-subtext italic">
+                    Note: $10 will be deducted from your main balance
+                  </div>
+                </div>
+              </div>
             )}
 
             {active === "settings" && (
@@ -2174,6 +2491,8 @@ export default function UserDashboardPage() {
                 {[
                   { key: "home", label: "Home" },
                   { key: "network", label: "My Network" },
+                  { key: "income", label: "Income History" },
+                  { key: "activation", label: "Activation Account" },
                 ].map((i) => (
                   <button
                     key={i.key}
@@ -2208,6 +2527,7 @@ export default function UserDashboardPage() {
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "profile", label: "Update Profile" },
+                        { key: "withdrawAddress", label: "Withdrawal Address" },
                         { key: "security", label: "Security Code" },
                       ].map((sub) => (
                         <button

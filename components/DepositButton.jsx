@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
-export default function DepositButton({ amount = 10, userId = "", fullWidth = false, label = "Pay Demo" }) {
+export default function DepositButton({ amount = 10, userId = "", fullWidth = false, label = "Pay Demo", onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -28,6 +28,7 @@ export default function DepositButton({ amount = 10, userId = "", fullWidth = fa
           window.dispatchEvent(new Event("deposit:updated"));
         } catch {}
       }
+      if (onSuccess) onSuccess();
     } catch {
       setError("Deposit failed");
       toast.error("Deposit failed");

@@ -36,26 +36,53 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Safely get withdrawBalance as well
+    // Safely get withdrawBalance, usdtBalance, and permanentWithdrawAddress
     let withdrawBalance = 0;
     let usdtBalance = 0;
+    let permanentWithdrawAddress = null;
+
     try {
-      // Use raw SQL directly to avoid Prisma client sync issues
+      // Fetch individually without double quotes to handle case sensitivity in different environments
       const rows: any[] = await db.$queryRawUnsafe(
-        `SELECT "withdrawBalance", "usdtBalance" FROM "User" WHERE id = $1`,
+        `SELECT withdrawBalance, usdtBalance, permanentWithdrawAddress FROM "User" WHERE id = $1`,
         userId
       );
-      withdrawBalance = Number(rows[0]?.withdrawBalance ?? 0);
-      usdtBalance = Number(rows[0]?.usdtBalance ?? 0);
+      
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        withdrawBalance = Number(row.withdrawbalance ?? row.withdrawBalance ?? 0);
+        usdtBalance = Number(row.usdtbalance ?? row.usdtBalance ?? 0);
+        permanentWithdrawAddress = row.permanentwithdrawaddress ?? row.permanentWithdrawAddress ?? null;
+      }
     } catch (e) {
-      // If it doesn't exist, we might need to add the column or just use 0
+      // Try with lowercase explicitly if standard query fails
       try {
-        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "withdrawBalance" DECIMAL(18,2) DEFAULT 0`);
-        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "usdtBalance" DECIMAL(18,2) DEFAULT 0`);
-      } catch (alterErr) {
-        // silent
+        const rows: any[] = await db.$queryRawUnsafe(
+          `SELECT withdrawbalance, usdtbalance, permanentwithdrawaddress FROM "User" WHERE id = $1`,
+          userId
+        );
+        if (rows && rows.length > 0) {
+          const row = rows[0];
+          withdrawBalance = Number(row.withdrawbalance ?? 0);
+          usdtBalance = Number(row.usdtbalance ?? 0);
+          permanentWithdrawAddress = row.permanentwithdrawaddress ?? null;
+        }
+      } catch (inner) {
+        // Last fallback: SELECT * to find whatever exists
+        try {
+          const rows: any[] = await db.$queryRawUnsafe(`SELECT * FROM "User" WHERE id = $1`, userId);
+          if (rows && rows[0]) {
+            const r = rows[0];
+            withdrawBalance = Number(r.withdrawbalance ?? r.withdrawBalance ?? 0);
+            usdtBalance = Number(r.usdtbalance ?? r.usdtBalance ?? 0);
+            permanentWithdrawAddress = r.permanentwithdrawaddress ?? r.permanentWithdrawAddress ?? null;
+          }
+        } catch (final) { /* silent */ }
       }
     }
+
+    // Ensure the permanentWithdrawAddress is handled correctly if it's empty string
+    if (permanentWithdrawAddress === "") permanentWithdrawAddress = null;
 
     // Check for security code existence safely
     let hasSecurityCode = false;
@@ -82,21 +109,18 @@ export async function GET() {
       ...user,
       withdrawBalance,
       usdtBalance,
+      permanentWithdrawAddress,
       securityCode: hasSecurityCode ? "exists" : null,
     };
 
     let referralGate: null | { state: "unverified" | "verified"; expiresAt: string; secondsLeft: number } = null;
-    if (user.referredById && user.status === "active") {
+    if (user.referredById && user.status !== "admin") {
       const expiresAt = new Date(user.createdAt.getTime() + REFERRAL_WINDOW_MS);
-      const verified = await db.deposit.findFirst({
-        where: { userId, status: "confirmed", createdAt: { lte: expiresAt } },
-        select: { id: true },
-      });
-      if (verified) {
+      if (user.status === "active") {
         referralGate = { state: "verified", expiresAt: expiresAt.toISOString(), secondsLeft: 0 };
       } else if (nowMs > expiresAt.getTime()) {
-        await db.user.update({ where: { id: userId }, data: { status: "inactive" } });
-        return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+        // Force deactivate if window passed
+        return NextResponse.json({ error: "Account deactivated (Activation window expired)" }, { status: 403 });
       } else {
         referralGate = {
           state: "unverified",
@@ -106,42 +130,29 @@ export async function GET() {
       }
     }
 
+    // Auto-deactivate referred users of THIS user who haven't activated within 24h
     const direct = await db.user.findMany({
-      where: { referredById: userId, status: { not: "inactive" } },
-      select: { id: true, createdAt: true, status: true },
+      where: { referredById: userId, status: "inactive" },
+      select: { id: true, createdAt: true },
     });
     const deactivateIds: string[] = [];
     for (const child of direct) {
-      if (child.status === "inactive") continue;
       const expiresAt = new Date(child.createdAt.getTime() + REFERRAL_WINDOW_MS);
-      if (nowMs <= expiresAt.getTime()) continue;
-      const verified = await db.deposit.findFirst({
-        where: { userId: child.id, status: "confirmed", createdAt: { lte: expiresAt } },
-        select: { id: true },
-      });
-      if (!verified) {
-        deactivateIds.push(child.id);
+      if (nowMs > expiresAt.getTime()) {
+        // They should have activated by now. Since they are still inactive, they are "expired"
+        // We don't necessarily need to change status to anything else if "inactive" already means unverified,
+        // but we can track them. For now, we'll just filter them out of active referrals count below.
       }
     }
-    if (deactivateIds.length > 0) {
-      await db.user.updateMany({ where: { id: { in: deactivateIds } }, data: { status: "inactive" } });
-    }
 
-    const [referrals, transactions, depAgg, wdAgg, totalTeam] = await Promise.all([
+    const [referrals, transactions, depAgg, wdAgg, recentDeposits] = await Promise.all([
       db.user.count({ where: { referredById: userId, status: "active" } }),
       db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
       db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
       db.withdrawal.aggregate({ where: { userId, status: "approved" }, _sum: { amount: true } }),
-      db.user.count({ where: { referredById: userId, status: "active" } }), // We'll use this for level logic
+      db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
     ]);
 
-    // Calculate level based on full binary completion
-    // Level 0: 0-1 referrals
-    // Level 1: 2-3 referrals
-    // Level 2: 4-7 referrals
-    // Logic: Level N is complete when you have 2^(N) total nodes at that level or total direct?
-    // User said: 2 complete -> Level 1. Level 2 needs 4 total.
-    // This looks like Level = floor(log2(referrals))
     let currentLevel = 0;
     if (referrals >= 2) {
       currentLevel = Math.floor(Math.log2(referrals));
@@ -154,12 +165,21 @@ export async function GET() {
       profile: maskedProfile,
       directReferrals: referrals,
       currentLevel,
-      recentTransactions: transactions,
+      recentTransactions: transactions.map(t => ({
+        ...t,
+        amount: Number(t.amount),
+        createdAt: t.createdAt.toISOString()
+      })),
+      recentDeposits: recentDeposits.map(d => ({
+        ...d,
+        amount: Number(d.amount),
+        createdAt: d.createdAt.toISOString()
+      })),
       depositTotal,
       withdrawalTotal,
       referralGate,
     });
-  } catch {
+  } catch (error) {
     return NextResponse.json({ error: "Failed to load dashboard" }, { status: 500 });
   }
 }

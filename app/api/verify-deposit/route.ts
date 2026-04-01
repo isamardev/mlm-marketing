@@ -125,19 +125,18 @@ import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
           select: { id: true },
         });
  
-     // Trigger commission distribution
-     const payout = await runFixedPayoutEngine({
-       sourceUserId: userId,
-       depositAmount: amount,
-       note: `Deposit hash ${transactionHash}`,
-     });
- 
+    // Increment user balance
+    await db.user.update({
+      where: { id: userId },
+      data: { balance: { increment: new Prisma.Decimal(amount.toFixed(2)) } },
+    });
+
     await db.deposit.update({
       where: { txHash: transactionHash },
       data: { status: "confirmed", verifiedAt: new Date() },
     });
 
-    return NextResponse.json({ success: true, payout });
+    return NextResponse.json({ success: true });
    } catch (error) {
      const message = error instanceof Error ? error.message : "Verification failed";
      return NextResponse.json({ error: message }, { status: 500 });

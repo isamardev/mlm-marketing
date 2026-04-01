@@ -11,7 +11,7 @@ datasource db {
 model User {
   id                 String          @id @default(cuid())
   username           String
-  phone              String?         @unique @default("")
+  phone              String?         @default("")
   country            String          @default("")
   email              String          @unique
   passwordHash       String
@@ -165,6 +165,7 @@ enum TransactionType {
   deposit
   commission
   adjustment
+  activation
 }
 
 enum NotificationType {

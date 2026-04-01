@@ -102,7 +102,7 @@ export async function POST(req: Request) {
             referrerCode: finalRefCode,
             referredById: pendingUser.referredById ?? (isFirstAdmin ? null : (await tx.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } }))?.id ?? null),
             balance: 0,
-            status: isFirstAdmin ? "admin" : "active",
+            status: isFirstAdmin ? "admin" : "inactive",
             emailVerifiedAt: new Date(),
           },
         });

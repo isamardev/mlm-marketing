@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { FaUser, FaEye, FaEyeSlash } from "react-icons/fa";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -233,8 +234,8 @@ function HomeContent() {
   const [showGrid, setShowGrid] = useState(false);
   const blockedNoticeHandledRef = useRef(false);
   const maxLevel = 33;
-  const newAtLevel = (n: number) => Math.pow(2, n - 1);
-  const totalAtLevel = (n: number) => Math.pow(2, n) - 1;
+  const newAtLevel = (n: number) => Math.pow(2, n);
+  const totalAtLevel = (n: number) => Math.pow(2, n + 1) - 1;
   const visibleNodes = useMemo(() => Math.min(totalAtLevel(level), 256), [level]);
   const gridCols = useMemo(() => Math.max(2, Math.floor(Math.sqrt(visibleNodes))), [visibleNodes]);
   const maxTotal = totalAtLevel(maxLevel);
@@ -260,7 +261,7 @@ function HomeContent() {
   ];
   const [tIndex, setTIndex] = useState(0);
   const faqsData = [
-    { q: "What is a binary structure?", a: "Each user adds two members. Levels grow like: L1=1, L2=3, L3=7, and so on." },
+    { q: "What is a binary structure?", a: "Each user adds two members. Levels grow like: L0=1, L1=3, L2=7, and so on." },
     { q: "How many levels are supported?", a: "The UI preview supports up to 33 levels." },
     { q: "Do payouts cover all 33 levels?", a: "No. Payouts are limited to the first 20 levels. Levels beyond 20 are visual only." },
     { q: "How do I create an account?", a: "Use the Login/Sign Up button; submit the form to start the flow." },
@@ -372,7 +373,13 @@ function HomeContent() {
         <div className="relative mx-auto max-w-7xl overflow-x-hidden px-4 pt-12 pb-12 sm:px-6 sm:pt-14 sm:pb-16">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-              <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
+              <div className="flex items-center gap-3">
+                <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
+                <div className="hidden items-center gap-4 lg:flex ml-4">
+                  <Link href="/about" className="text-xs font-medium text-subtext transition hover:text-primary">About Us</Link>
+                  <Link href="/terms" className="text-xs font-medium text-subtext transition hover:text-primary">Terms</Link>
+                </div>
+              </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur sm:flex">
                 <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(0,201,255,0.35)]" />
                 <span className="text-[10px] sm:text-xs tracking-wide text-accent">Connecting People & Ideas</span>
@@ -488,7 +495,7 @@ function HomeContent() {
             <div className="flex w-full max-w-md items-center gap-4">
               <input
                 type="range"
-                min={1}
+                min={0}
                 max={maxLevel}
                 value={level}
                 onChange={(e) => {
@@ -670,11 +677,27 @@ function HomeContent() {
       </section>
 
       <footer className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-muted p-6 text-sm text-subtext ring-1 ring-ring sm:flex-row">
-          <div>© {new Date().getFullYear()} MLM Marketing</div>
-          <div className="inline-flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-primary shadow-[0_0_10px_rgba(0,178,163,0.35)]" />
-            <span>Teal accent theme</span>
+        <div className="flex flex-col items-center justify-between gap-6 rounded-3xl bg-muted p-8 text-sm text-subtext ring-1 ring-ring sm:flex-row">
+          <div className="flex flex-col items-center gap-2 sm:items-start">
+            <div className="text-lg font-bold text-foreground">MLM Marketing</div>
+            <div>© {new Date().getFullYear()} All rights reserved</div>
+          </div>
+          
+          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4 font-medium">
+            <Link href="/about" className="transition hover:text-primary">About Us</Link>
+            <Link href="/terms" className="transition hover:text-primary">Terms & Conditions</Link>
+            <button 
+              type="button" 
+              onClick={() => { setAuthMode("signup"); setAuthOpen(true); }} 
+              className="transition hover:text-primary"
+            >
+              Join Network
+            </button>
+          </div>
+
+          <div className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2 ring-1 ring-ring">
+            <span className="h-3 w-3 animate-pulse rounded-full bg-primary shadow-[0_0_10px_rgba(0,178,163,0.35)]" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-primary">Live Platform</span>
           </div>
         </div>
       </footer>
@@ -1235,9 +1258,9 @@ function TreePreview({ depth }: { depth: number }) {
   const iconSize = 24;
   const rows = useMemo(() => {
     const r: Array<Array<{ x: number; y: number; idx: number }>> = [];
-    for (let level = 1; level <= visibleDepth; level += 1) {
-      const count = Math.pow(2, level - 1);
-      const y = padY + (level - 1) * rowH;
+    for (let level = 0; level <= visibleDepth; level += 1) {
+      const count = Math.pow(2, level);
+      const y = padY + level * rowH;
       const pts = Array.from({ length: count }, (_, idx) => ({
         x: Math.round(w * ((idx + 1) / (count + 1))),
         y,
@@ -1283,7 +1306,7 @@ function TreePreview({ depth }: { depth: number }) {
               key={`n-${l}-${i}`}
               className="absolute -translate-x-1/2 -translate-y-1/2"
               style={{ left: pt.x, top: pt.y }}
-              title={`L${l + 1} · Node ${i + 1}`}
+              title={`L${l} · Node ${i + 1}`}
             >
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 ring-1 ring-ring">
                 <FaUser className="text-foreground" size={16} />
@@ -1299,7 +1322,7 @@ function TreePreview({ depth }: { depth: number }) {
           <div className="mt-3 grid gap-3">
             {Array.from({ length: depth - visibleDepth }, (_, i) => {
               const level = visibleDepth + i + 1;
-              const nodes = Math.pow(2, level - 1);
+              const nodes = Math.pow(2, level);
               return (
                 <div key={level} className="rounded-xl bg-card px-3 py-3 ring-1 ring-ring">
                   <div className="flex items-center justify-between gap-3">

@@ -67,7 +67,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return null;
 
-    if (user.status === "inactive" || user.status === "blocked") return null;
+    if (user.status === "blocked") return null;
 
     const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
     const status = adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;

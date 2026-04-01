@@ -102,6 +102,126 @@ export async function runMlmPayoutEngine(params: {
   return { sourceUserId, depositAmount, payouts };
 }
 
+export async function runActivationPayoutEngine(params: {
+  sourceUserId: string;
+  activationAmount: number;
+  note?: string;
+}) {
+  const db = getDb();
+  const sourceUserId = params.sourceUserId;
+  const activationAmount = params.activationAmount;
+  const note = params.note ?? "Account activation";
+  const perLevel = 0.5;
+  const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
+
+  const payouts: PayoutResult[] = [];
+
+  await db.$transaction(async (tx) => {
+    // 1. Deduct activation amount and set status to active
+    const user = await tx.user.update({
+      where: { id: sourceUserId },
+      data: { 
+        balance: { decrement: new Prisma.Decimal(activationAmount.toFixed(2)) },
+        status: "active"
+      },
+      select: { id: true, referredById: true, username: true, balance: true }
+    });
+
+    if (Number(user.balance) < 0) {
+      throw new Error("Insufficient balance for activation");
+    }
+
+    // 2. Create activation transaction
+    await tx.transaction.create({
+      data: {
+        userId: sourceUserId,
+        sourceUserId,
+        level: 0,
+        amount: new Prisma.Decimal(activationAmount.toFixed(2)),
+        type: "activation",
+        note,
+      },
+    });
+
+    const adminByStatus = await tx.user.findFirst({
+      where: { status: "admin" },
+      select: { id: true, email: true, username: true },
+    });
+    const adminByEmail =
+      adminByStatus ??
+      (await tx.user.findUnique({ where: { email: adminEmail }, select: { id: true, email: true, username: true } }));
+    const adminId = adminByEmail?.id ?? null;
+    if (!adminId) {
+      throw new Error("Admin user not found");
+    }
+
+    let currentParentId = user.referredById;
+    let remainingAmount = Number(activationAmount.toFixed(2));
+
+    for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
+      const beneficiaryId = currentParentId;
+
+      await tx.user.update({
+        where: { id: beneficiaryId },
+        data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
+      });
+      await tx.notification.create({
+        data: {
+          userId: beneficiaryId,
+          type: "commission",
+          title: `L${level} Commission`,
+          message: `You received ${perLevel.toFixed(2)} from ${user.username} activation`,
+        },
+      });
+      await tx.transaction.create({
+        data: {
+          userId: beneficiaryId,
+          sourceUserId,
+          level,
+          amount: new Prisma.Decimal(perLevel.toFixed(2)),
+          type: "commission",
+          note: `L${level} activation commission from ${sourceUserId}`,
+        },
+      });
+      payouts.push({ level, beneficiaryUserId: beneficiaryId, amount: perLevel });
+      remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
+
+      const parent = await tx.user.findUnique({
+        where: { id: currentParentId },
+        select: { referredById: true },
+      });
+      currentParentId = parent?.referredById ?? null;
+    }
+
+    if (remainingAmount > 0) {
+      await tx.user.update({
+        where: { id: adminId },
+        data: { balance: { increment: new Prisma.Decimal(remainingAmount.toFixed(2)) } },
+      });
+      await tx.notification.create({
+        data: {
+          userId: adminId,
+          type: "commission",
+          title: "Admin Activation Share",
+          message: `You received ${remainingAmount.toFixed(2)} from ${user.username} activation`,
+        },
+      });
+      await tx.transaction.create({
+        data: {
+          userId: adminId,
+          sourceUserId,
+          level: 0,
+          amount: new Prisma.Decimal(remainingAmount.toFixed(2)),
+          type: "commission",
+          note: `Admin activation share from ${sourceUserId}`,
+        },
+      });
+    }
+  });
+
+  return { sourceUserId, activationAmount, payouts };
+}
+
 export async function runFixedPayoutEngine(params: {
   sourceUserId: string;
   depositAmount: number;

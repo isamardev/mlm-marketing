@@ -32,6 +32,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Check if user has a permanent withdrawal address set
+    let permanentWithdrawAddress = (user as any).permanentWithdrawAddress;
+    if (permanentWithdrawAddress === undefined) {
+      try {
+        const rows: any[] = await db.$queryRawUnsafe(
+          `SELECT "permanentWithdrawAddress" FROM "User" WHERE id = $1`,
+          userId
+        );
+        if (rows && rows.length > 0) {
+          permanentWithdrawAddress = rows[0].permanentWithdrawAddress ?? rows[0].permanentwithdrawaddress;
+        }
+      } catch (err) {
+        permanentWithdrawAddress = null;
+      }
+    }
+
+    if (permanentWithdrawAddress && address !== permanentWithdrawAddress) {
+      return NextResponse.json({ error: "Withdrawals only allowed to your saved permanent address" }, { status: 400 });
+    }
+
     // Handle security code check with raw query if prisma client is outdated
     let userSecurityCode = (user as any).securityCode;
     if (userSecurityCode === undefined) {
