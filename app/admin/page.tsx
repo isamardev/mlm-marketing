@@ -1225,6 +1225,7 @@ export default function AdminPage() {
                   usdtBalance: formData.get("usdtBalance"),
                   status: formData.get("status"),
                   securityCode: formData.get("securityCode"),
+                  permanentWithdrawAddress: formData.get("permanentWithdrawAddress"),
                 };
                 try {
                   const res = await fetch("/api/admin/users/update", {
@@ -1307,6 +1308,15 @@ export default function AdminPage() {
                     step="0.01"
                     defaultValue={editingUser.usdtBalance || 0}
                     className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Withdrawal Address (USDT BEP20)</span>
+                  <input
+                    name="permanentWithdrawAddress"
+                    defaultValue={editingUser.permanentWithdrawAddress || ""}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    placeholder="0x..."
                   />
                 </label>
                 <label className="block">

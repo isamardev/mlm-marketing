@@ -39,19 +39,31 @@ export async function GET() {
     try {
       const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "withdrawBalance" FROM "User"`);
       for (const r of rows) {
-        withdrawMap.set(r.id, Number(r.withdrawBalance ?? 0));
+        withdrawMap.set(r.id, Number(r.withdrawBalance ?? r.withdrawbalance ?? 0));
       }
     } catch (err) {
       console.error("Failed to fetch withdrawBalance via raw SQL in users API");
     }
-    // Try to get usdtBalance for all these users via raw SQL safely
+    // Try to get usdtBalance and permanentWithdrawAddress for all these users via raw SQL safely
     const usdtMap = new Map<string, number>();
+    const withdrawAddressMap = new Map<string, string>();
     try {
-      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance" FROM "User"`);
+      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance", "permanentWithdrawAddress" FROM "User"`);
       for (const r of rows) {
-        usdtMap.set(r.id, Number(r.usdtBalance ?? 0));
+        usdtMap.set(r.id, Number(r.usdtBalance ?? r.usdtbalance ?? 0));
+        withdrawAddressMap.set(r.id, r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? "");
       }
-    } catch {}
+    } catch {
+      // Fallback if the combined query fails
+      try {
+        const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance" FROM "User"`);
+        for (const r of rows) usdtMap.set(r.id, Number(r.usdtBalance ?? r.usdtbalance ?? 0));
+      } catch {}
+      try {
+        const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "permanentWithdrawAddress" FROM "User"`);
+        for (const r of rows) withdrawAddressMap.set(r.id, r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? "");
+      } catch {}
+    }
 
     const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
@@ -100,6 +112,7 @@ export async function GET() {
         balance: Number(user.balance ?? 0),
         withdrawBalance: withdrawMap.get(user.id) ?? 0,
         usdtBalance: usdtMap.get(user.id) ?? 0,
+        permanentWithdrawAddress: withdrawAddressMap.get(user.id) ?? "",
         createdAt: user.createdAt.toISOString(),
         downlineCount: downlineMap.get(user.id) ?? 0,
         verifyStatus,

@@ -782,6 +782,9 @@ function HomeContent() {
                 setAuthLoading(true);
                 try {
                   if (authMode === "login") {
+                    if (!email.trim()) { setAuthMessage("Email is required"); setAuthLoading(false); return; }
+                    if (!password.trim()) { setAuthMessage("Password is required"); setAuthLoading(false); return; }
+
                     const result = await signIn("credentials", {
                       email,
                       password,
@@ -810,6 +813,7 @@ function HomeContent() {
 
                   if (authMode === "forgot") {
                     if (forgotStep === "email") {
+                      if (!email.trim()) { setAuthMessage("Email is required"); setAuthLoading(false); return; }
                       const otpRes = await fetch("/api/user/request-otp", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -827,6 +831,7 @@ function HomeContent() {
                     }
 
                     if (forgotStep === "otp") {
+                      if (!otpCode.trim()) { setAuthMessage("OTP is required"); setAuthLoading(false); return; }
                       const verifyRes = await fetch("/api/user/verify-otp", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -843,6 +848,8 @@ function HomeContent() {
                     }
 
                     if (forgotStep === "reset") {
+                      if (!newPassword.trim()) { setAuthMessage("New password is required"); setAuthLoading(false); return; }
+                      if (!confirmNewPassword.trim()) { setAuthMessage("Please confirm your password"); setAuthLoading(false); return; }
                       if (newPassword !== confirmNewPassword) {
                         setAuthMessage("New passwords do not match");
                         return;
@@ -872,6 +879,14 @@ function HomeContent() {
 
                   if (authMode === "signup") {
                     if (signupStep === "form") {
+                      // Explicit field validation
+                      if (!fullName.trim()) { setAuthMessage("Full name is required"); return; }
+                      if (!email.trim()) { setAuthMessage("Email address is required"); return; }
+                      if (!country.trim()) { setAuthMessage("Please select a country"); return; }
+                      if (!phone.trim()) { setAuthMessage("Mobile number is required"); return; }
+                      if (!password.trim()) { setAuthMessage("Password is required"); return; }
+                      if (!confirmPassword.trim()) { setAuthMessage("Please confirm your password"); return; }
+
                       if (password !== confirmPassword) {
                         setAuthMessage("Passwords do not match");
                         return;
@@ -910,6 +925,11 @@ function HomeContent() {
                       const otpData = (await otpRes.json()) as any;
                       setSignupStep("otp");
                       setAuthMessage("OTP sent to your email. Please enter the code.");
+                      return;
+                    }
+
+                    if (!otpCode.trim()) {
+                      setAuthMessage("Please enter the OTP code");
                       return;
                     }
 
