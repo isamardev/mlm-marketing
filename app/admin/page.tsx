@@ -1218,9 +1218,13 @@ export default function AdminPage() {
                   id: editingUser.id,
                   username: formData.get("username"),
                   email: formData.get("email"),
+                  phone: formData.get("phone"),
+                  country: formData.get("country"),
                   balance: formData.get("balance"),
                   withdrawBalance: formData.get("withdrawBalance"),
+                  usdtBalance: formData.get("usdtBalance"),
                   status: formData.get("status"),
+                  securityCode: formData.get("securityCode"),
                 };
                 try {
                   const res = await fetch("/api/admin/users/update", {
@@ -1260,6 +1264,22 @@ export default function AdminPage() {
                   />
                 </label>
                 <label className="block">
+                  <span className="text-xs font-medium text-subtext">Phone</span>
+                  <input
+                    name="phone"
+                    defaultValue={editingUser.phone}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Country</span>
+                  <input
+                    name="country"
+                    defaultValue={editingUser.country}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
                   <span className="text-xs font-medium text-subtext">Main Balance ($)</span>
                   <input
                     name="balance"
@@ -1270,12 +1290,30 @@ export default function AdminPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-subtext">Withdraw Wallet ($)</span>
+                  <span className="text-xs font-medium text-subtext">Withdrawal Wallet ($)</span>
                   <input
                     name="withdrawBalance"
                     type="number"
                     step="0.01"
                     defaultValue={editingUser.withdrawBalance || 0}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">USDT Wallet ($)</span>
+                  <input
+                    name="usdtBalance"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingUser.usdtBalance || 0}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Security Code</span>
+                  <input
+                    name="securityCode"
+                    defaultValue={editingUser.securityCode}
                     className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
                   />
                 </label>

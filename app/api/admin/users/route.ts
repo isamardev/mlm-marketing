@@ -16,12 +16,15 @@ export async function GET() {
         id: true,
         username: true,
         email: true,
-        walletAddress: true,
-        referrerCode: true,
-        referredById: true,
+        phone: true,
+        country: true,
         balance: true,
+        withdrawBalance: true,
         status: true,
         createdAt: true,
+        referredById: true,
+        securityCode: true,
+        _count: { select: { referrals: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -36,6 +39,14 @@ export async function GET() {
     } catch (err) {
       console.error("Failed to fetch withdrawBalance via raw SQL in users API");
     }
+    // Try to get usdtBalance for all these users via raw SQL safely
+    const usdtMap = new Map<string, number>();
+    try {
+      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance" FROM "User"`);
+      for (const r of rows) {
+        usdtMap.set(r.id, Number(r.usdtBalance ?? 0));
+      }
+    } catch {}
 
     const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (
@@ -106,6 +117,7 @@ export async function GET() {
         ...user,
         balance: Number(user.balance ?? 0),
         withdrawBalance: withdrawMap.get(user.id) ?? 0,
+        usdtBalance: usdtMap.get(user.id) ?? 0,
         createdAt: user.createdAt.toISOString(),
         downlineCount: downlineMap.get(user.id) ?? 0,
         verifyStatus,

@@ -10,7 +10,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
-    const { id, username, email, balance, withdrawBalance, status } = await req.json();
+    const { id, username, email, phone, country, balance, withdrawBalance, usdtBalance, status, securityCode } = await req.json();
 
     if (!id) {
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
@@ -28,27 +28,17 @@ export async function PATCH(req: Request) {
     const updateData: any = {};
     if (username !== undefined) updateData.username = username;
     if (email !== undefined) updateData.email = email.toLowerCase();
+    if (phone !== undefined) updateData.phone = phone;
+    if (country !== undefined) updateData.country = country;
     if (balance !== undefined) updateData.balance = new Prisma.Decimal(Number(balance).toFixed(2));
+    if (withdrawBalance !== undefined) updateData.withdrawBalance = new Prisma.Decimal(Number(withdrawBalance).toFixed(2));
+    if (usdtBalance !== undefined) updateData.usdtBalance = new Prisma.Decimal(Number(usdtBalance).toFixed(2));
     if (status !== undefined) updateData.status = status;
+    if (securityCode !== undefined) updateData.securityCode = securityCode;
 
-    // Use transaction to update and handle withdrawBalance safely (as it might be missing in prisma client)
-    const updatedUser = await db.$transaction(async (tx) => {
-      const u = await tx.user.update({
-        where: { id },
-        data: updateData,
-      });
-
-      if (withdrawBalance !== undefined) {
-        try {
-          await tx.$executeRawUnsafe(
-            `UPDATE "User" SET "withdrawBalance" = $1 WHERE id = $2`,
-            Number(withdrawBalance), id
-          );
-        } catch (err) {
-          console.error("Failed to update withdrawBalance via raw SQL:", err);
-        }
-      }
-      return u;
+    const updatedUser = await db.user.update({
+      where: { id },
+      data: updateData,
     });
 
     return NextResponse.json({ success: true, user: updatedUser });

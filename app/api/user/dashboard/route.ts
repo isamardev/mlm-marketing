@@ -22,6 +22,7 @@ export async function GET() {
         id: true,
         username: true,
         email: true,
+        phone: true,
         walletAddress: true,
         referrerCode: true,
         balance: true,
@@ -126,12 +127,25 @@ export async function GET() {
       await db.user.updateMany({ where: { id: { in: deactivateIds } }, data: { status: "inactive" } });
     }
 
-    const [referrals, transactions, depAgg, wdAgg] = await Promise.all([
+    const [referrals, transactions, depAgg, wdAgg, totalTeam] = await Promise.all([
       db.user.count({ where: { referredById: userId, status: "active" } }),
       db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
       db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
       db.withdrawal.aggregate({ where: { userId, status: "approved" }, _sum: { amount: true } }),
+      db.user.count({ where: { referredById: userId, status: "active" } }), // We'll use this for level logic
     ]);
+
+    // Calculate level based on full binary completion
+    // Level 0: 0-1 referrals
+    // Level 1: 2-3 referrals
+    // Level 2: 4-7 referrals
+    // Logic: Level N is complete when you have 2^(N) total nodes at that level or total direct?
+    // User said: 2 complete -> Level 1. Level 2 needs 4 total.
+    // This looks like Level = floor(log2(referrals))
+    let currentLevel = 0;
+    if (referrals >= 2) {
+      currentLevel = Math.floor(Math.log2(referrals));
+    }
 
     const depositTotal = Number(depAgg._sum.amount ?? 0);
     const withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
@@ -139,6 +153,7 @@ export async function GET() {
     return NextResponse.json({
       profile: maskedProfile,
       directReferrals: referrals,
+      currentLevel,
       recentTransactions: transactions,
       depositTotal,
       withdrawalTotal,

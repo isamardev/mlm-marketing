@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  engineType = "wasm"
 }
 
 datasource db {
@@ -10,6 +11,7 @@ datasource db {
 model User {
   id                 String          @id @default(cuid())
   username           String
+  phone              String?         @unique @default("")
   country            String          @default("")
   email              String          @unique
   passwordHash       String
@@ -135,6 +137,21 @@ model Withdrawal {
   user      User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([userId, status])
+}
+
+model PendingUser {
+  id            String   @id @default(cuid())
+  username      String
+  country       String
+  email         String   @unique
+  passwordHash  String
+  phone         String
+  referrerCode  String?
+  referredById  String?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([email])
 }
 
 enum UserStatus {

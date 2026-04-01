@@ -58,11 +58,24 @@ export async function POST(req: Request) {
     const normalizedEmail = payload.email.toLowerCase();
 
     const already = await db.user.findFirst({
-      where: { email: normalizedEmail },
-      select: { id: true },
+      where: { OR: [{ email: normalizedEmail }, { phone: payload.phone.trim() }] },
+      select: { id: true, email: true },
     });
     if (already) {
-      return NextResponse.json({ error: "Email already exists" }, { status: 409 });
+      const field = already.email === normalizedEmail ? "Email" : "Phone number";
+      return NextResponse.json({ error: `${field} already exists` }, { status: 409 });
+    }
+
+    const pendingAlready = await db.pendingUser.findFirst({
+      where: {
+        OR: [{ email: normalizedEmail }, { phone: payload.phone.trim() }],
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true, email: true },
+    });
+    if (pendingAlready) {
+      const field = pendingAlready.email === normalizedEmail ? "Email" : "Phone number";
+      return NextResponse.json({ error: `${field} already exists in pending registrations` }, { status: 409 });
     }
 
     const userCount = await db.user.count();
@@ -162,43 +175,40 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 12);
-    const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const user = await db.user.create({
-      data: {
+    
+    // Store in PendingUser instead of User
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const pendingUser = await db.pendingUser.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        username: payload.fullName.trim(),
+        country: payload.country.trim(),
+        passwordHash,
+        phone: payload.phone.trim(),
+        referrerCode: refCode,
+        referredById: parent?.id ?? null,
+        expiresAt,
+      },
+      create: {
         username: payload.fullName.trim(),
         country: payload.country.trim(),
         email: normalizedEmail,
         passwordHash,
-        walletAddress: walletPlaceholder,
+        phone: payload.phone.trim(),
         referrerCode: refCode,
         referredById: parent?.id ?? null,
-        balance: 0,
-        status: allowBootstrap ? "admin" : "inactive",
-        emailVerifiedAt: null,
+        expiresAt,
       },
-      select: { id: true, username: true, email: true, referrerCode: true, referredById: true },
     });
-
-    // Update phone number using raw SQL to avoid Prisma client sync issues
-    try {
-      await db.$executeRawUnsafe(
-        `UPDATE "User" SET phone = $1 WHERE id = $2`,
-        payload.phone.trim(),
-        user.id
-      );
-    } catch (e) {
-      console.error("Failed to update phone number:", e);
-    }
 
     return NextResponse.json(
       {
         success: true,
         user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          referrerCode: user.referrerCode,
-          referredBy: user.referredById,
+          id: pendingUser.id,
+          username: pendingUser.username,
+          email: pendingUser.email,
+          referrerCode: pendingUser.referrerCode,
         },
       },
       { status: 201 },

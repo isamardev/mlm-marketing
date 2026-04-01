@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
     }
 
-    if (parsed.data.purpose !== "password_reset") {
+    if (parsed.data.purpose !== "password_reset" && parsed.data.purpose !== "registration") {
       await db.otp.update({
         where: { id: otp.id },
         data: { consumedAt: new Date() },
@@ -62,12 +62,59 @@ export async function POST(req: Request) {
     }
 
     if (parsed.data.purpose === "registration") {
-      await db.user.updateMany({
+      const pendingUser = await db.pendingUser.findUnique({
         where: { email },
-        data: { 
-          emailVerifiedAt: new Date(),
-          status: "active" 
-        },
+      });
+
+      if (!pendingUser) {
+        return NextResponse.json({ error: "Registration data not found" }, { status: 400 });
+      }
+
+      const userCount = await db.user.count();
+      const COMPANY_ADMIN_EMAIL = "admin@example.com";
+      const isFirstAdmin = userCount === 0 && email === COMPANY_ADMIN_EMAIL;
+
+      const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      async function allocateRefCode(tx: ReturnType<typeof db.$transaction> extends never ? any : any) {
+        if (pendingUser.referrerCode) {
+          const exists = await db.user.findUnique({ where: { referrerCode: pendingUser.referrerCode }, select: { id: true } });
+          if (!exists) return pendingUser.referrerCode;
+        }
+        let code = `USER${Math.floor(100000 + Math.random() * 900000)}`;
+        for (let i = 0; i < 5; i += 1) {
+          const exists = await db.user.findUnique({ where: { referrerCode: code }, select: { id: true } });
+          if (!exists) break;
+          code = `USER${Math.floor(100000 + Math.random() * 900000)}`;
+        }
+        return code;
+      }
+      const finalRefCode = await allocateRefCode(db as any);
+
+      await db.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            username: pendingUser.username,
+            country: pendingUser.country,
+            email: pendingUser.email,
+            passwordHash: pendingUser.passwordHash,
+            phone: pendingUser.phone,
+            walletAddress: walletPlaceholder,
+            referrerCode: finalRefCode,
+            referredById: pendingUser.referredById ?? (isFirstAdmin ? null : (await tx.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } }))?.id ?? null),
+            balance: 0,
+            status: isFirstAdmin ? "admin" : "active",
+            emailVerifiedAt: new Date(),
+          },
+        });
+
+        await tx.pendingUser.delete({
+          where: { id: pendingUser.id },
+        });
+
+        await tx.otp.update({
+          where: { id: otp.id },
+          data: { consumedAt: new Date() },
+        });
       });
     }
 

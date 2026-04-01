@@ -272,11 +272,18 @@ function WithdrawSection({ profile }: { profile: any }) {
   );
 }
 
-function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfileUpdate?: (updatedData: any) => void }) {
+function MyProfileSection({ 
+  profile, 
+  onProfileUpdate, 
+  tab 
+}: { 
+  profile: any, 
+  onProfileUpdate?: (updatedData: any) => void,
+  tab: "profile" | "security"
+}) {
   const [uiMessage, setUiMessage] = useState("");
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [isManagingSecurityCode, setIsManagingSecurityCode] = useState(false);
+  const [isChangingCode, setIsChangingCode] = useState(false);
   const [isUpdatingSecurityCode, setIsUpdatingSecurityCode] = useState(false);
   const [showSecurityCode, setShowSecurityCode] = useState(false);
   const [passwordForSecurityCode, setPasswordForSecurityCode] = useState("");
@@ -289,17 +296,19 @@ function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfil
     confirmPassword: ""
   });
 
-  // Sync profile data when profile prop updates
-  useEffect(() => {
-    if (profile?.username) {
-      setProfileData(prev => ({ ...prev, username: profile.username }));
-    }
-  }, [profile?.username]);
-
   const [securityCodeData, setSecurityCodeData] = useState({
     currentPassword: "",
     newSecurityCode: ""
   });
+
+  // Reset show security code state when tab changes
+  useEffect(() => {
+    setShowSecurityCode(false);
+    setIsChangingCode(false);
+    setRetrievedSecurityCode(null);
+    setPasswordForSecurityCode("");
+    setUiMessage("");
+  }, [tab]);
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,7 +401,7 @@ function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfil
       setUiMessage(successMsg);
       toast.success(successMsg);
       setSecurityCodeData({ currentPassword: "", newSecurityCode: "" });
-      setIsManagingSecurityCode(false);
+      setIsChangingCode(false);
       setIsUpdatingSecurityCode(false);
       if (onProfileUpdate) {
         onProfileUpdate({ securityCode: "exists" });
@@ -432,7 +441,7 @@ function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfil
   return (
     <div className="space-y-6">
       <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-        <div className="text-sm font-semibold">My Profile</div>
+        <div className="text-sm font-semibold">{tab === "profile" ? "Update Profile" : "Security Code"}</div>
         
         {uiMessage && (
           <div className="mt-4 rounded-2xl bg-muted p-4 text-sm text-foreground ring-1 ring-ring">
@@ -441,22 +450,31 @@ function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfil
         )}
         
         <div className="mt-6 grid gap-4">
-          {/* Combined Profile & Password Section */}
-          {!isEditingProfile ? (
+          {tab === "profile" && (
             <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
-              <div className="text-sm font-medium">Edit Profile</div>
-              <div className="mt-2 text-xs text-subtext">Update your name and account password</div>
-              <button 
-                onClick={() => setIsEditingProfile(true)}
-                className="mt-3 inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-              >
-                Edit Profile
-              </button>
-            </div>
-          ) : (
-            <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
-              <div className="text-sm font-medium">Update Profile</div>
+              <div className="text-sm font-medium">Account Settings</div>
               <form onSubmit={handleProfileUpdate} className="mt-4 space-y-3">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider text-subtext mb-1 px-1">Email</label>
+                    <input
+                      type="email"
+                      value={profile?.email || ""}
+                      readOnly
+                      className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider text-subtext mb-1 px-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={profile?.phone || ""}
+                      readOnly
+                      className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider text-subtext mb-1 px-1">Name</label>
                   <input
@@ -504,148 +522,165 @@ function MyProfileSection({ profile, onProfileUpdate }: { profile: any, onProfil
                   >
                     {isUpdatingProfile ? "Updating..." : "Save Changes"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingProfile(false);
-                      setProfileData({
-                        username: profile?.username || "",
-                        currentPassword: "",
-                        newPassword: "",
-                        confirmPassword: ""
-                      });
-                    }}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Security Code Section */}
-          {!isManagingSecurityCode && !showSecurityCode ? (
-            <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
-              <div className="text-sm font-medium">Security Code</div>
-              <div className="mt-2 text-xs text-subtext">Used for P2P transfers and withdrawals</div>
-              <div className="mt-3 flex gap-2">
-                {profile?.securityCode ? (
-                  <button 
-                    onClick={() => setShowSecurityCode(true)}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                  >
-                    Show Security Code
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => setIsManagingSecurityCode(true)}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                  >
-                    Set Security Code
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : isManagingSecurityCode ? (
-            <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
-              <div className="text-sm font-medium">{profile?.securityCode ? "Update Security Code" : "Set Security Code"}</div>
-              <form onSubmit={handleSecurityCodeUpdate} className="mt-4 space-y-3">
-                <input
-                  type="password"
-                  placeholder="Account Password"
-                  value={securityCodeData.currentPassword}
-                  onChange={(e) => setSecurityCodeData({...securityCodeData, currentPassword: e.target.value})}
-                  className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="New Security Code"
-                  value={securityCodeData.newSecurityCode}
-                  onChange={(e) => setSecurityCodeData({...securityCodeData, newSecurityCode: e.target.value})}
-                  className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
-                  required
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={isUpdatingSecurityCode}
-                    className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {isUpdatingSecurityCode ? "Updating..." : "Update Code"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsManagingSecurityCode(false)}
-                    className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
+          {tab === "security" && (
+            <>
+              {/* Show/Update Security Code */}
+              {isChangingCode ? (
+                <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
+                  <div className="text-sm font-medium">Update Security Code</div>
+                  <form onSubmit={handleSecurityCodeUpdate} className="mt-4 space-y-3">
+                    <input
+                      type="password"
+                      placeholder="Account Password"
+                      value={securityCodeData.currentPassword}
+                      onChange={(e) => setSecurityCodeData({...securityCodeData, currentPassword: e.target.value})}
+                      className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="New Security Code"
+                      value={securityCodeData.newSecurityCode}
+                      onChange={(e) => setSecurityCodeData({...securityCodeData, newSecurityCode: e.target.value})}
+                      className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
+                      required
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={isUpdatingSecurityCode}
+                        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {isUpdatingSecurityCode ? "Updating..." : "Update Code"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsChangingCode(false)}
+                        className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </form>
-            </div>
-          ) : (
-            <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
-              <div className="text-sm font-medium">Security Code</div>
-              {retrievedSecurityCode ? (
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-ring">
-                    <span className="text-subtext">Your Code:</span>
-                    <span className="font-mono font-bold text-primary text-lg">{retrievedSecurityCode}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsManagingSecurityCode(true);
-                        setShowSecurityCode(false);
-                        setRetrievedSecurityCode(null);
-                      }}
-                      className="flex-1 inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
-                    >
-                      Change Security Code
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSecurityCode(false);
-                        setRetrievedSecurityCode(null);
-                      }}
-                      className="flex-1 inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                    >
-                      Close
-                    </button>
-                  </div>
+              ) : !showSecurityCode ? (
+                <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
+                  {profile?.securityCode ? (
+                    <>
+                      <div className="text-sm font-medium text-foreground">Security Code Set</div>
+                      <div className="mt-2 text-xs text-subtext">You have already set your security code. It is required for withdrawals and P2P transfers.</div>
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={() => setShowSecurityCode(true)}
+                          className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
+                        >
+                          View Current Code
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm font-medium">Set Security Code</div>
+                      <div className="mt-1 text-xs text-subtext">Used for P2P transfers and withdrawals</div>
+                      <form onSubmit={handleSecurityCodeUpdate} className="mt-4 space-y-3">
+                        <input
+                          type="password"
+                          placeholder="Account Password"
+                          value={securityCodeData.currentPassword}
+                          onChange={(e) => setSecurityCodeData({...securityCodeData, currentPassword: e.target.value})}
+                          className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
+                          required
+                        />
+                        <input
+                          type="text"
+                          placeholder="New Security Code"
+                          value={securityCodeData.newSecurityCode}
+                          onChange={(e) => setSecurityCodeData({...securityCodeData, newSecurityCode: e.target.value})}
+                          className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
+                          required
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={isUpdatingSecurityCode}
+                            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {isUpdatingSecurityCode ? "Setting..." : "Set Code"}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
                 </div>
               ) : (
-                <form onSubmit={handleShowSecurityCode} className="mt-4 space-y-3">
-                  <input
-                    type="password"
-                    placeholder="Enter Account Password to View Code"
-                    value={passwordForSecurityCode}
-                    onChange={(e) => setPasswordForSecurityCode(e.target.value)}
-                    className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
-                    required
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
-                    >
-                      Show Code
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowSecurityCode(false)}
-                      className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                <div className="rounded-2xl bg-muted p-4 ring-1 ring-ring">
+                  <div className="text-sm font-medium">View Security Code</div>
+                  {retrievedSecurityCode ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-ring">
+                        <span className="text-subtext">Your Code:</span>
+                        <span className="font-mono font-bold text-primary text-lg">{retrievedSecurityCode}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSecurityCode(false);
+                            setRetrievedSecurityCode(null);
+                          }}
+                          className="flex-1 inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                        >
+                          Close
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsChangingCode(true);
+                            setShowSecurityCode(false);
+                            setRetrievedSecurityCode(null);
+                          }}
+                          className="flex-1 inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
+                        >
+                          Change Security Code
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleShowSecurityCode} className="mt-4 space-y-3">
+                      <input
+                        type="password"
+                        placeholder="Enter Account Password to View Code"
+                        value={passwordForSecurityCode}
+                        onChange={(e) => setPasswordForSecurityCode(e.target.value)}
+                        className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-ring"
+                        required
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
+                        >
+                          Show Code
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowSecurityCode(false)}
+                          className="inline-flex items-center justify-center rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -848,13 +883,16 @@ export default function UserDashboardPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<"home" | "network" | "wallet" | "settings">("home");
   const [walletOpen, setWalletOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [walletTab, setWalletTab] = useState<
     "deposit" | "depositHistory" | "withdraw" | "withdrawHistory" | "p2pTransfer" | "p2pHistory" | "internalTransfer" | "commissions"
   >("deposit");
+  const [profileTab, setProfileTab] = useState<"profile" | "security">("profile");
   const [level, setLevel] = useState(6);
   const maxLevel = 33;
 
   const [profile, setProfile] = useState<any>(null);
+  const [currentLevel, setCurrentLevel] = useState<number>(0);
   const [referralGate, setReferralGate] = useState<any>(null);
   const [gateSecondsLeft, setGateSecondsLeft] = useState<number>(0);
   const [directReferrals, setDirectReferrals] = useState<number>(0);
@@ -1006,20 +1044,6 @@ export default function UserDashboardPage() {
     }
   }, [recentTransactions]);
 
-  const currentLevel = useMemo(() => {
-    // Qualification rule: Level 0 until at least 2 direct referrals
-    if (directReferrals < 2) return 0;
-    
-    if (!refStats?.levels) return 1;
-    let maxL = 1;
-    Object.entries(refStats.levels).forEach(([lvl, count]) => {
-      if (Number(count) > 0) {
-        maxL = Math.max(maxL, Number(lvl));
-      }
-    });
-    return maxL;
-  }, [refStats, directReferrals]);
-
   const totalIncomeAllTime = useMemo(() => {
     try {
       return Number(
@@ -1153,6 +1177,7 @@ export default function UserDashboardPage() {
       }
       if (dash?.profile) {
         setProfile(dash.profile);
+        setCurrentLevel(Number(dash?.currentLevel ?? 0));
         setReferralGate(dash.referralGate ?? null);
         setGateSecondsLeft(Number(dash?.referralGate?.secondsLeft ?? 0));
         setDirectReferrals(dash.directReferrals ?? 0);
@@ -1323,7 +1348,7 @@ export default function UserDashboardPage() {
               <div className="mt-1 grid gap-1">
                 <button
                   type="button"
-                  onClick={() => { setActive("home"); setWalletOpen(false); }}
+                  onClick={() => { setActive("home"); setWalletOpen(false); setProfileOpen(false); }}
                   className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                     active === "home" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                   }`}
@@ -1333,7 +1358,7 @@ export default function UserDashboardPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setActive("network"); setWalletOpen(false); }}
+                  onClick={() => { setActive("network"); setWalletOpen(false); setProfileOpen(false); }}
                   className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                     active === "network" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                   }`}
@@ -1344,7 +1369,7 @@ export default function UserDashboardPage() {
                 <div className="grid gap-1">
                   <button
                     type="button"
-                    onClick={() => { setWalletOpen((v) => !v); }}
+                    onClick={() => { setWalletOpen((v) => !v); setProfileOpen(false); }}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === "wallet" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                     }`}
@@ -1363,7 +1388,7 @@ export default function UserDashboardPage() {
                         { key: "p2pTransfer", label: "P2P Fund Transfer" },
                         { key: "internalTransfer", label: "Transfer to Withdraw Wallet" },
                         { key: "p2pHistory", label: "P2P History" },
-                        { key: "commissions", label: "Commission History" },
+                        { key: "commissions", label: "Income History" },
                       ].map((i) => (
                         <button
                           key={i.key}
@@ -1382,16 +1407,41 @@ export default function UserDashboardPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setActive("settings"); setWalletOpen(false); }}
-                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                    active === "settings" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <span>My Profile</span>
-                  {active === "settings" ? <span className="text-primary">●</span> : null}
-                </button>
+                <div className="grid gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setProfileOpen((v) => !v); setWalletOpen(false); }}
+                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                      active === "settings" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                    }`}
+                    aria-expanded={profileOpen}
+                  >
+                    <span>My Profile</span>
+                    <span className={`transition-transform ${profileOpen ? "rotate-90" : ""}`}>›</span>
+                  </button>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                    <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                      {[
+                        { key: "profile", label: "Update Profile" },
+                        { key: "security", label: "Security Code" },
+                      ].map((i) => (
+                        <button
+                          key={i.key}
+                          type="button"
+                          onClick={() => { setActive("settings"); setProfileTab(i.key as typeof profileTab); }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                            active === "settings" && profileTab === (i.key as typeof profileTab)
+                              ? "bg-muted text-foreground"
+                              : "text-subtext hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span>{i.label}</span>
+                          {active === "settings" && profileTab === (i.key as typeof profileTab) ? <span className="text-primary">●</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1567,8 +1617,7 @@ export default function UserDashboardPage() {
                   </div>
 
                   <div className="mt-6 grid gap-3 grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  <StatCard label="Available Balance" value={toUSD(Number(profile?.balance ?? 0))} />
-                  <StatCard label="Withdraw Wallet" value={toUSD(Number(profile?.withdrawBalance ?? 0))} />
+                  <StatCard label="Withdrawal wallet" value={toUSD(Number(profile?.balance ?? 0))} />
                   <StatCard label="USDT Wallet" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
                   <StatCard label="Total Income" value={toUSD(totalIncomeAllTime)} />
                   <StatCard label="Daily Income" value={toUSD(todayEarnings)} />
@@ -1952,7 +2001,7 @@ export default function UserDashboardPage() {
                 )}
                 {walletTab === "commissions" && (
                   <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
-                    <div className="text-sm font-semibold">Commission History</div>
+                    <div className="text-sm font-semibold">Income History</div>
                     <div className="mt-1 text-xs text-subtext">Detailed breakdown of referral earnings</div>
                     <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                       <div className="min-w-[600px]">
@@ -2015,6 +2064,7 @@ export default function UserDashboardPage() {
               <MyProfileSection 
                 profile={profile} 
                 onProfileUpdate={(updatedData) => setProfile((prev: any) => ({ ...prev, ...updatedData }))} 
+                tab={profileTab}
               />
             )}
           </main>
@@ -2124,7 +2174,6 @@ export default function UserDashboardPage() {
                 {[
                   { key: "home", label: "Home" },
                   { key: "network", label: "My Network" },
-                  { key: "settings", label: "My Profile" },
                 ].map((i) => (
                   <button
                     key={i.key}
@@ -2133,6 +2182,7 @@ export default function UserDashboardPage() {
                       setActive(i.key as typeof active);
                       setMobileNavOpen(false);
                       setWalletOpen(false);
+                      setProfileOpen(false);
                     }}
                     className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === i.key ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
@@ -2142,11 +2192,50 @@ export default function UserDashboardPage() {
                     {active === i.key ? <span className="text-primary">●</span> : null}
                   </button>
                 ))}
-                
+
                 <div className="grid gap-1">
                   <button
                     type="button"
-                    onClick={() => setWalletOpen((v) => !v)}
+                    onClick={() => { setProfileOpen((v) => !v); setWalletOpen(false); }}
+                    className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                      active === "settings" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <span>My Profile</span>
+                    <span className={`transition-transform ${profileOpen ? "rotate-90" : ""}`}>›</span>
+                  </button>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                    <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                      {[
+                        { key: "profile", label: "Update Profile" },
+                        { key: "security", label: "Security Code" },
+                      ].map((sub) => (
+                        <button
+                          key={sub.key}
+                          type="button"
+                          onClick={() => {
+                            setActive("settings");
+                            setProfileTab(sub.key as typeof profileTab);
+                            setMobileNavOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                            active === "settings" && profileTab === sub.key
+                              ? "bg-muted text-foreground"
+                              : "text-subtext hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span>{sub.label}</span>
+                          {active === "settings" && profileTab === sub.key ? <span className="text-primary">●</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setWalletOpen((v) => !v); setProfileOpen(false); }}
                     className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === "wallet" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                     }`}

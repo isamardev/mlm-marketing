@@ -29,6 +29,14 @@ export async function POST(req: Request) {
 
     const db = getDb();
     const user = await db.user.findUnique({ where: { email }, select: { id: true } });
+    
+    if (parsed.data.purpose === "registration") {
+      const pendingUser = await db.pendingUser.findUnique({ where: { email }, select: { id: true } });
+      if (!pendingUser && !user) {
+        return NextResponse.json({ error: "Please sign up first" }, { status: 404 });
+      }
+    }
+
     if (!user && parsed.data.purpose === "password_reset") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
