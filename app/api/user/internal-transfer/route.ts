@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { amount, securityCode, target } = await req.json();
+    const { amount, securityCode, source, target } = await req.json();
     const userId = session.user.id;
 
     if (!amount || amount <= 0) {
@@ -24,10 +24,22 @@ export async function POST(req: Request) {
     const db = getDb();
 
     // 1. Get user and verify security code
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { id: true, balance: true, securityCode: true }
-    });
+    // Fetch all balance fields to verify correctly
+    let user: any = null;
+    try {
+      const rows: any[] = await db.$queryRawUnsafe(
+        `SELECT id, balance, "withdrawBalance", "usdtBalance", "securityCode" FROM "User" WHERE id = $1`,
+        userId
+      );
+      if (rows && rows.length > 0) {
+        user = rows[0];
+      }
+    } catch (e) {
+      user = await db.user.findUnique({
+        where: { id: userId },
+        select: { id: true, balance: true, securityCode: true }
+      });
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -37,51 +49,63 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Security Code" }, { status: 401 });
     }
 
-    if (Number(user.balance) < amount) {
-      return NextResponse.json({ error: "Insufficient balance in main wallet" }, { status: 400 });
+    const sourceField = source === "withdraw" ? "withdrawBalance" : "balance";
+    const sourceLabel = source === "withdraw" ? "Withdraw Wallet" : "Main Wallet";
+    
+    const targetField = target === "usdt" ? "usdtBalance" : "withdrawBalance";
+    const targetLabel = target === "usdt" ? "USDT Wallet" : "Withdraw Wallet";
+
+    if (sourceField === targetField) {
+      return NextResponse.json({ error: "Source and Target wallets must be different" }, { status: 400 });
     }
 
-    const targetField = target === "usdt" ? "usdtBalance" : "withdrawBalance";
-    const targetLabel = target === "usdt" ? "USDT wallet" : "withdraw wallet";
+    const sourceBalance = Number(user[sourceField] ?? 0);
+    if (sourceBalance < amount) {
+      return NextResponse.json({ error: `Insufficient balance in ${sourceLabel}` }, { status: 400 });
+    }
 
-    // 2. Perform transfer using transaction
+    // 2. Perform transfer
     try {
-      await db.$transaction([
-        db.user.update({
-          where: { id: userId },
-          data: {
-            balance: { decrement: amount },
-            [targetField]: { increment: amount }
-          }
-        }),
-        db.transaction.create({
+      const amt = Number(amount);
+      
+      // Ensure columns exist first
+      try {
+        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "usdtBalance" DECIMAL(18,2) DEFAULT 0`);
+        await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "withdrawBalance" DECIMAL(18,2) DEFAULT 0`);
+      } catch (e) { /* silent */ }
+
+      // Update both wallets in a single query for atomicity
+      try {
+        await db.$executeRawUnsafe(
+          `UPDATE "User" SET "${sourceField}" = "${sourceField}" - $1, "${targetField}" = COALESCE("${targetField}", 0) + $2 WHERE id = $3`,
+          amt, amt, userId
+        );
+      } catch (sqlErr: any) {
+        // Fallback for unquoted if necessary (although quoted is standard for camelCase)
+        await db.$executeRawUnsafe(
+          `UPDATE "User" SET ${sourceField} = ${sourceField} - $1, ${targetField} = COALESCE(${targetField}, 0) + $2 WHERE id = $3`,
+          amt, amt, userId
+        );
+      }
+
+      // Log the transaction
+      try {
+        await db.transaction.create({
           data: {
             userId: userId,
             sourceUserId: userId,
             level: 0,
-            amount: amount,
+            amount: amt,
             type: "adjustment",
-            note: `Internal transfer to ${targetLabel}`
+            note: `Internal transfer from ${sourceLabel} to ${targetLabel}`
           }
-        })
-      ]);
+        });
+      } catch (logErr) {
+        console.error("Failed to log internal transfer:", logErr);
+      }
     } catch (e: any) {
-      // Fallback for balance fields if Prisma client out of sync
-      console.error("Prisma transaction failed, trying raw SQL:", e.message);
-      await db.$executeRawUnsafe(
-        `UPDATE "User" SET balance = balance - $1, "${targetField}" = "${targetField}" + $2 WHERE id = $3`,
-        amount, amount, userId
-      );
-      await db.transaction.create({
-        data: {
-          userId: userId,
-          sourceUserId: userId,
-          level: 0,
-          amount: amount,
-          type: "adjustment",
-          note: `Internal transfer to ${targetLabel} (raw)`
-        }
-      });
+      console.error("Internal transfer execution failed:", e.message);
+      return NextResponse.json({ error: `Transfer failed: ${e.message}` }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, message: "Transfer successful" });

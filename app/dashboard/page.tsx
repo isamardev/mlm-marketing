@@ -1096,6 +1096,7 @@ export default function UserDashboardPage() {
 
   const [internalTransferAmount, setInternalTransferAmount] = useState("");
   const [internalTransferMsg, setInternalTransferMsg] = useState("");
+  const [transferSource, setTransferSource] = useState<"main" | "withdraw">("main");
   const [transferTarget, setTransferTarget] = useState<"withdraw" | "usdt">("withdraw");
 
   const onInternalTransfer = async () => {
@@ -1112,12 +1113,18 @@ export default function UserDashboardPage() {
         toast.error("Security Code is required");
         return;
       }
+      if (transferSource === (transferTarget as any)) {
+        setInternalTransferMsg("Source and Target wallets must be different");
+        toast.error("Source and Target wallets must be different");
+        return;
+      }
       const res = await fetch("/api/user/internal-transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           amount: amt, 
           securityCode: p2pSecurityCode.trim(),
+          source: transferSource,
           target: transferTarget
         }),
       });
@@ -1127,7 +1134,7 @@ export default function UserDashboardPage() {
         toast.error(data?.error || "Transfer failed");
         return;
       }
-      toast.success(`Transfer to ${transferTarget === "withdraw" ? "withdraw" : "USDT"} wallet successful`);
+      toast.success(`Transfer successful`);
       setInternalTransferAmount("");
       setP2pSecurityCode("");
       // Refresh data
@@ -1842,7 +1849,8 @@ export default function UserDashboardPage() {
                   </div>
 
                   <div className="mt-6 grid gap-3 grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  <StatCard label="Withdrawal wallet" value={toUSD(Number(profile?.balance ?? 0))} />
+                  <StatCard label="Main wallet" value={toUSD(Number(profile?.balance ?? 0))} />
+                  <StatCard label="Withdraw Wallet" value={toUSD(Number(profile?.withdrawBalance ?? 0))} />
                   <StatCard label="USDT Wallet" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
                   <StatCard label="Total Income" value={toUSD(totalIncomeAllTime)} />
                   <StatCard label="Daily Income" value={toUSD(todayEarnings)} />
@@ -2129,51 +2137,48 @@ export default function UserDashboardPage() {
             {active === "wallet" && walletTab === "internalTransfer" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Transfer Funds</div>
-                <div className="mt-1 text-xs text-subtext">Transfer from Main Balance to other wallets</div>
-                <div className="mt-4 grid gap-3 sm:max-w-md">
-                  <div className="grid gap-2">
-                    <span className="text-sm font-medium">Select Target Wallet</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setTransferTarget("withdraw")}
-                        className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
-                          transferTarget === "withdraw" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
-                        }`}
-                      >
-                        Withdraw Wallet
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTransferTarget("usdt")}
-                        className={`rounded-2xl px-4 py-2 text-sm font-medium transition ring-1 ${
-                          transferTarget === "usdt" ? "bg-primary text-white ring-primary" : "bg-card text-subtext ring-ring hover:bg-muted"
-                        }`}
-                      >
-                        USDT Wallet (P2P)
-                      </button>
-                    </div>
+                <div className="mt-1 text-xs text-subtext">Transfer between your internal wallets</div>
+                <div className="mt-6 grid gap-4 sm:max-w-md">
+                  <div className="grid gap-1">
+                    <span className="text-xs text-subtext px-1 uppercase tracking-wider">From Wallet</span>
+                    <select
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      value={transferSource}
+                      onChange={(e) => setTransferSource(e.target.value as typeof transferSource)}
+                    >
+                      <option value="main">Main Balance ({toUSD(Number(profile?.balance ?? 0))})</option>
+                      <option value="withdraw">Withdraw Wallet ({toUSD(Number(profile?.withdrawBalance ?? 0))})</option>
+                    </select>
+                  </div>
+
+                  <div className="grid gap-1">
+                    <span className="text-xs text-subtext px-1 uppercase tracking-wider">To Wallet</span>
+                    <select
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      value={transferTarget}
+                      onChange={(e) => setTransferTarget(e.target.value as typeof transferTarget)}
+                    >
+                      <option value="withdraw">Withdraw Wallet ({toUSD(Number(profile?.withdrawBalance ?? 0))})</option>
+                      <option value="usdt">USDT Wallet (P2P) ({toUSD(Number(profile?.usdtBalance ?? 0))})</option>
+                    </select>
                   </div>
 
                   <label className="grid gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-subtext">Amount to Transfer (USDT)</span>
-                      <span className="text-xs font-medium text-primary">Balance: {toUSD(Number(profile?.balance ?? 0))}</span>
-                    </div>
+                    <span className="text-xs text-subtext px-1 uppercase tracking-wider">Amount to Transfer (USDT)</span>
                     <input
                       value={internalTransferAmount}
                       onChange={(e) => setInternalTransferAmount(e.target.value)}
-                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                       placeholder="10"
                     />
                   </label>
                   <label className="grid gap-1">
-                    <span className="text-xs text-subtext">Security Code</span>
+                    <span className="text-xs text-subtext px-1 uppercase tracking-wider">Security Code</span>
                     <input
                       type="password"
                       value={p2pSecurityCode}
                       onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
-                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                       placeholder="Your Security Code"
                     />
                   </label>

@@ -42,20 +42,20 @@ export async function GET() {
     let permanentWithdrawAddress = null;
 
     try {
-      // Fetch individually without double quotes to handle case sensitivity in different environments
+      // Use double quotes for case-sensitive columns in Postgres
       const rows: any[] = await db.$queryRawUnsafe(
-        `SELECT withdrawBalance, usdtBalance, permanentWithdrawAddress FROM "User" WHERE id = $1`,
+        `SELECT "withdrawBalance", "usdtBalance", "permanentWithdrawAddress" FROM "User" WHERE id = $1`,
         userId
       );
       
       if (rows && rows.length > 0) {
         const row = rows[0];
-        withdrawBalance = Number(row.withdrawbalance ?? row.withdrawBalance ?? 0);
-        usdtBalance = Number(row.usdtbalance ?? row.usdtBalance ?? 0);
-        permanentWithdrawAddress = row.permanentwithdrawaddress ?? row.permanentWithdrawAddress ?? null;
+        withdrawBalance = Number(row.withdrawBalance ?? row.withdrawbalance ?? 0);
+        usdtBalance = Number(row.usdtBalance ?? row.usdtbalance ?? 0);
+        permanentWithdrawAddress = row.permanentWithdrawAddress ?? row.permanentwithdrawaddress ?? null;
       }
     } catch (e) {
-      // Try with lowercase explicitly if standard query fails
+      // If double quotes fail, try lowercase fallback
       try {
         const rows: any[] = await db.$queryRawUnsafe(
           `SELECT withdrawbalance, usdtbalance, permanentwithdrawaddress FROM "User" WHERE id = $1`,
@@ -73,9 +73,9 @@ export async function GET() {
           const rows: any[] = await db.$queryRawUnsafe(`SELECT * FROM "User" WHERE id = $1`, userId);
           if (rows && rows[0]) {
             const r = rows[0];
-            withdrawBalance = Number(r.withdrawbalance ?? r.withdrawBalance ?? 0);
-            usdtBalance = Number(r.usdtbalance ?? r.usdtBalance ?? 0);
-            permanentWithdrawAddress = r.permanentwithdrawaddress ?? r.permanentWithdrawAddress ?? null;
+            withdrawBalance = Number(r.withdrawBalance ?? r.withdrawbalance ?? 0);
+            usdtBalance = Number(r.usdtBalance ?? r.usdtbalance ?? 0);
+            permanentWithdrawAddress = r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? null;
           }
         } catch (final) { /* silent */ }
       }
