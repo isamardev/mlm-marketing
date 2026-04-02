@@ -41,11 +41,24 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    // Increment user balance
-    await db.user.update({
-      where: { id: parsed.data.sourceUserId },
-      data: { balance: { increment: new Prisma.Decimal(parsed.data.amount.toFixed(2)) } },
-    });
+    // Increment user USDT wallet (fallback to raw SQL if column missing)
+    try {
+      await db.user.update({
+        where: { id: parsed.data.sourceUserId },
+        data: { usdtBalance: { increment: new Prisma.Decimal(parsed.data.amount.toFixed(2)) } } as any,
+      });
+    } catch (e) {
+      try {
+        await db.$executeRawUnsafe(
+          `ALTER TABLE "User" ADD COLUMN "usdtBalance" DECIMAL(18,2) DEFAULT 0`
+        );
+      } catch {}
+      await db.$executeRawUnsafe(
+        `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance", 0) + $1 WHERE id = $2`,
+        Number(parsed.data.amount.toFixed(2)),
+        parsed.data.sourceUserId
+      );
+    }
 
     await db.deposit.update({
       where: { txHash },

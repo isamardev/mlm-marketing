@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { requireAdminSection } from "@/lib/admin-api-guard";
 
 const schema = z.object({
   id: z.string().min(6),
@@ -10,10 +10,8 @@ const schema = z.object({
 
 export async function PATCH(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.status !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const gate = await requireAdminSection("users");
+    if (!gate.ok) return gate.response;
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {

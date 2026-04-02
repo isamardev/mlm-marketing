@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { verifyImpersonationToken } from "@/lib/impersonation-token";
 
 const schema = z.object({
   email: z.string().email().optional(),
@@ -19,7 +20,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const email = (parsed.data.email ?? session?.user?.email ?? "").toLowerCase();
+    let email = (parsed.data.email ?? "").toLowerCase();
+    if (!email) {
+      const authz = req.headers.get("authorization");
+      if (authz?.startsWith("Bearer ")) {
+        const uid = verifyImpersonationToken(authz.slice(7).trim());
+        if (uid) {
+          const dbLookup = getDb();
+          const u = await dbLookup.user.findUnique({ where: { id: uid }, select: { email: true } });
+          email = (u?.email ?? "").toLowerCase();
+        }
+      }
+    }
+    if (!email) {
+      email = (session?.user?.email ?? "").toLowerCase();
+    }
     if (!email) {
       return NextResponse.json({ error: "Email required" }, { status: 400 });
     }
@@ -70,15 +85,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Registration data not found" }, { status: 400 });
       }
 
+      const reg = pendingUser;
+
       const userCount = await db.user.count();
       const COMPANY_ADMIN_EMAIL = "admin@example.com";
       const isFirstAdmin = userCount === 0 && email === COMPANY_ADMIN_EMAIL;
 
       const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      async function allocateRefCode(tx: ReturnType<typeof db.$transaction> extends never ? any : any) {
-        if (pendingUser.referrerCode) {
-          const exists = await db.user.findUnique({ where: { referrerCode: pendingUser.referrerCode }, select: { id: true } });
-          if (!exists) return pendingUser.referrerCode;
+      async function allocateRefCode(): Promise<string> {
+        if (reg.referrerCode) {
+          const exists = await db.user.findUnique({ where: { referrerCode: reg.referrerCode }, select: { id: true } });
+          if (!exists) return reg.referrerCode;
         }
         let code = `USER${Math.floor(100000 + Math.random() * 900000)}`;
         for (let i = 0; i < 5; i += 1) {
@@ -88,19 +105,19 @@ export async function POST(req: Request) {
         }
         return code;
       }
-      const finalRefCode = await allocateRefCode(db as any);
+      const finalRefCode = await allocateRefCode();
 
       await db.$transaction(async (tx) => {
         const newUser = await tx.user.create({
           data: {
-            username: pendingUser.username,
-            country: pendingUser.country,
-            email: pendingUser.email,
-            passwordHash: pendingUser.passwordHash,
-            phone: pendingUser.phone,
+            username: reg.username,
+            country: reg.country,
+            email: reg.email,
+            passwordHash: reg.passwordHash,
+            phone: reg.phone,
             walletAddress: walletPlaceholder,
             referrerCode: finalRefCode,
-            referredById: pendingUser.referredById ?? (isFirstAdmin ? null : (await tx.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } }))?.id ?? null),
+            referredById: reg.referredById ?? (isFirstAdmin ? null : (await tx.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } }))?.id ?? null),
             balance: 0,
             status: isFirstAdmin ? "admin" : "inactive",
             emailVerifiedAt: new Date(),
@@ -108,7 +125,7 @@ export async function POST(req: Request) {
         });
 
         await tx.pendingUser.delete({
-          where: { id: pendingUser.id },
+          where: { id: reg.id },
         });
 
         await tx.otp.update({

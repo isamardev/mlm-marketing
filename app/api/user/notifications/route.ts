@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (session.user.status === "inactive") {
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.effectiveStatus === "inactive") {
       return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
     }
-    if (session.user.status === "blocked") {
+    if (ctx.effectiveStatus === "blocked") {
       return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }
 
@@ -21,12 +19,12 @@ export async function GET(req: Request) {
     const db = getDb();
     const [items, unread] = await Promise.all([
       db.notification.findMany({
-        where: { userId: session.user.id },
+        where: { userId: ctx.userId },
         orderBy: { createdAt: "desc" },
         take,
       }),
       db.notification.count({
-        where: { userId: session.user.id, readAt: null },
+        where: { userId: ctx.userId, readAt: null },
       }),
     ]);
 

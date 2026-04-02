@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (session.user.status === "inactive") {
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.effectiveStatus === "inactive") {
       return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
     }
-    if (session.user.status === "blocked") {
+    if (ctx.effectiveStatus === "blocked") {
       return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }
 
     const db = getDb();
-    const userId = session.user.id;
+    const userId = ctx.userId;
 
     const rows = await db.$queryRaw<Array<{ level: number; count: bigint | number }>>(Prisma.sql`
       WITH RECURSIVE downline AS (

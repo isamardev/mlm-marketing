@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.effectiveStatus === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+    }
+    if (ctx.effectiveStatus === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }
 
     const { amount, securityCode, source, target } = await req.json();
-    const userId = session.user.id;
+    const userId = ctx.userId;
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
@@ -49,14 +53,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Security Code" }, { status: 401 });
     }
 
-    const sourceField = source === "withdraw" ? "withdrawBalance" : "balance";
-    const sourceLabel = source === "withdraw" ? "Withdraw Wallet" : "Main Wallet";
+    const sourceField = source === "withdraw" ? "withdrawBalance" : "usdtBalance";
+    const sourceLabel = source === "withdraw" ? "Withdraw Wallet" : "USDT Wallet (Main)";
     
     const targetField = target === "usdt" ? "usdtBalance" : "withdrawBalance";
     const targetLabel = target === "usdt" ? "USDT Wallet" : "Withdraw Wallet";
 
-    if (sourceField === targetField) {
-      return NextResponse.json({ error: "Source and Target wallets must be different" }, { status: 400 });
+    if (!(source === "withdraw" && target === "usdt")) {
+      return NextResponse.json({ error: "Only transfer from Withdraw Wallet to USDT Wallet is allowed" }, { status: 400 });
     }
 
     const sourceBalance = Number(user[sourceField] ?? 0);

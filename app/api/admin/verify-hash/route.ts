@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { requireAdminSection } from "@/lib/admin-api-guard";
 import { Prisma } from "@prisma/client";
 import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 
@@ -25,10 +25,8 @@ async function verifyOnBscScan(txHash: string) {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.status !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const gate = await requireAdminSection("payouts");
+    if (!gate.ok) return gate.response;
 
     const body = await req.json();
     const parsed = schema.safeParse(body);

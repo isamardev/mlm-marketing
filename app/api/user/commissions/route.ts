@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { auth } from "../../../../auth"; // Use relative path to avoid Turbopack alias issues
 import { getDb } from "@/lib/db";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
 // GET /api/user/commissions
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
 
     const db = getDb();
     const commissions = await db.transaction.findMany({
       where: {
-        userId: session.user.id,
+        userId: ctx.userId,
         type: "commission",
       },
       include: {

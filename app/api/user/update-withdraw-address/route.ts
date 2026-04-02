@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
 const schema = z.object({
   address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid USDT (BEP20) address"),
@@ -9,10 +9,8 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
 
     const body = await req.json();
     const parsed = schema.safeParse(body);
@@ -21,7 +19,7 @@ export async function POST(req: Request) {
     }
 
     const db = getDb();
-    const userId = session.user.id;
+    const userId = ctx.userId;
     const { address } = parsed.data;
 
     // Check if user already has an address saved

@@ -2,12 +2,33 @@
 import { useCallback, useMemo, useState, useEffect, type FormEvent } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { FaUser } from "react-icons/fa";
+import { FaUser, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
 
 type NavItem = {
   key: string;
   label: string;
+};
+
+/** How often admin data refetches in the background while the tab is open (ms). */
+const ADMIN_POLL_MS = 8_000;
+
+type PaymentHistoryKind = "deposits" | "withdrawals" | "commissions" | "charity" | "fee";
+
+const PAYMENT_HISTORY_SUB: { key: PaymentHistoryKind; label: string }[] = [
+  { key: "deposits", label: "Deposit history" },
+  { key: "withdrawals", label: "Withdrawal history" },
+  { key: "commissions", label: "Admin commission history" },
+  { key: "charity", label: "Charity history" },
+  { key: "fee", label: "Fee history" },
+];
+
+const paymentHistoryKindLabel: Record<PaymentHistoryKind, string> = {
+  deposits: "Deposit history",
+  withdrawals: "Withdrawal history",
+  commissions: "Admin commission history",
+  charity: "Charity history",
+  fee: "Fee history",
 };
 
 const navItems: NavItem[] = [
@@ -17,7 +38,20 @@ const navItems: NavItem[] = [
   { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
   { key: "withdrawals", label: "Withdrawals" },
+  { key: "roles", label: "Roles" },
 ];
+
+const ROLE_CHECKBOX_OPTIONS: { key: string; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "users", label: "Users" },
+  { key: "deposits", label: "Deposits" },
+  { key: "payouts", label: "Payouts" },
+  { key: "settings", label: "Settings" },
+  { key: "withdrawals", label: "Withdrawals" },
+  { key: "payments", label: "Payment History" },
+];
+
+type AdminNavKey = NavItem["key"] | "payments";
 
 function ConfirmationModal({
   message,
@@ -66,20 +100,11 @@ function ConfirmationModal({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] min-w-0">
       <div className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-subtext truncate">{label}</div>
       <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground truncate">{value}</div>
-      {hint ? <div className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-subtext truncate">{hint}</div> : null}
     </div>
   );
 }
@@ -87,6 +112,7 @@ function StatCard({
 function AdminLoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -136,14 +162,25 @@ function AdminLoginForm() {
             
             <div>
               <label className="block text-sm font-medium mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl bg-background px-4 py-3 text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder="Enter admin password"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-2xl bg-background py-3 pl-4 pr-12 text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Enter admin password"
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex items-center px-4 text-subtext transition hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FaEyeSlash className="h-4 w-4" /> : <FaEye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             
             {error && (
@@ -278,11 +315,10 @@ function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], orig
 }
 
 export default function AdminPage() {
-  const router = useRouter();
   const { data: session, status } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [active, setActive] = useState<NavItem["key"]>("overview");
+  const [active, setActive] = useState<AdminNavKey>("overview");
 
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -310,35 +346,306 @@ export default function AdminPage() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [paymentHistoryKind, setPaymentHistoryKind] = useState<PaymentHistoryKind>("deposits");
+  const [paymentHistoryItems, setPaymentHistoryItems] = useState<any[]>([]);
+  const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
+  const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+
+  const [rolesList, setRolesList] = useState<
+    {
+      id: string;
+      name: string;
+      permissions: string[];
+      _count?: { users: number };
+      staffUser?: { email: string; username: string } | null;
+    }[]
+  >([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newStaffName, setNewStaffName] = useState("");
+  const [newStaffEmail, setNewStaffEmail] = useState("");
+  const [newStaffPassword, setNewStaffPassword] = useState("");
+  const [newRolePerms, setNewRolePerms] = useState<Record<string, boolean>>({});
+  const [editingRole, setEditingRole] = useState<{
+    id: string;
+    name: string;
+    permissions: string[];
+  } | null>(null);
+  const [editRoleName, setEditRoleName] = useState("");
+  const [editRolePerms, setEditRolePerms] = useState<Record<string, boolean>>({});
+  const [adminRolesForSelect, setAdminRolesForSelect] = useState<{ id: string; name: string }[]>([]);
+
+  const adminFullAccess = session?.user?.adminFullAccess === true;
+  const adminAllowedSections = session?.user?.adminAllowedSections ?? [];
+  const canAdminSection = useCallback(
+    (k: string) => adminFullAccess || adminAllowedSections.includes(k),
+    [adminFullAccess, adminAllowedSections],
+  );
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => canAdminSection(item.key)),
+    [canAdminSection],
+  );
+
+  const firstAllowedTab = useMemo(() => {
+    const order: AdminNavKey[] = [
+      "overview",
+      "users",
+      "deposits",
+      "payouts",
+      "settings",
+      "withdrawals",
+      "payments",
+      "roles",
+    ];
+    const hit = order.find((k) => canAdminSection(k));
+    return hit;
+  }, [canAdminSection]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || session?.user?.status !== "admin") return;
+    if (!adminFullAccess && adminAllowedSections.length === 0) return;
+    const can = (k: string) => adminFullAccess || adminAllowedSections.includes(k);
+    if (active === "payments") {
+      if (!can("payments")) {
+        if (firstAllowedTab) setActive(firstAllowedTab);
+        setPaymentHistoryOpen(false);
+      }
+      return;
+    }
+    if (!can(active)) {
+      if (firstAllowedTab) setActive(firstAllowedTab);
+    }
+  }, [
+    status,
+    session?.user?.status,
+    adminFullAccess,
+    adminAllowedSections,
+    active,
+    firstAllowedTab,
+  ]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || session?.user?.status !== "admin") return;
+    if (active !== "roles" || !adminFullAccess) return;
+    let cancelled = false;
+    setRolesLoading(true);
+    fetch("/api/admin/roles", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data?.roles)) {
+          setRolesList(
+            data.roles.map(
+              (r: {
+                id: string;
+                name: string;
+                permissions: unknown;
+                _count?: { users: number };
+                users?: { email: string; username: string }[];
+              }) => ({
+                id: r.id,
+                name: r.name,
+                permissions: Array.isArray(r.permissions) ? r.permissions.filter((x: unknown) => typeof x === "string") : [],
+                _count: r._count,
+                staffUser: r.users?.[0] ?? null,
+              }),
+            ),
+          );
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setRolesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, status, session?.user?.status, adminFullAccess]);
+
+  useEffect(() => {
+    if (!editingUser || editingUser.status !== "admin" || !adminFullAccess) {
+      setAdminRolesForSelect([]);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/admin/roles", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data?.roles)) {
+          setAdminRolesForSelect(data.roles.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [editingUser, adminFullAccess]);
+
+  useEffect(() => {
+    if (!editingRole) return;
+    setEditRoleName(editingRole.name);
+    const m: Record<string, boolean> = {};
+    for (const o of ROLE_CHECKBOX_OPTIONS) {
+      m[o.key] = editingRole.permissions.includes(o.key);
+    }
+    setEditRolePerms(m);
+  }, [editingRole]);
+
+  const openPaymentSub = useCallback((kind: PaymentHistoryKind) => {
+    setActive("payments");
+    setPaymentHistoryKind(kind);
+    setPaymentHistoryOpen(true);
+    setMobileNavOpen(false);
+  }, []);
+
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
     setOrigin(o);
   }, []);
 
-  const fetchAdminUsers = useCallback(async () => {
-    setUsersLoading(true);
-    setUsersError("");
+  const fetchAdminUsers = useCallback(async (silent = false) => {
+    if (!silent) {
+      setUsersLoading(true);
+      setUsersError("");
+    }
     try {
       const res = await fetch("/api/admin/users", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         setUsers([]);
-        setUsersError(typeof data?.error === "string" ? data.error : "Failed to load users");
+        if (!silent) setUsersError(typeof data?.error === "string" ? data.error : "Failed to load users");
         return;
       }
       if (Array.isArray(data?.users)) {
         setUsers(data.users);
       } else {
         setUsers([]);
-        setUsersError("No users data found");
+        if (!silent) setUsersError("No users data found");
       }
     } catch {
       setUsers([]);
-      setUsersError("Failed to load users");
+      if (!silent) setUsersError("Failed to load users");
     } finally {
-      setUsersLoading(false);
+      if (!silent) setUsersLoading(false);
     }
   }, []);
+
+  const fetchAdminDashboardData = useCallback(async () => {
+    if (status !== "authenticated" || !session?.user?.id || session.user.status !== "admin") return;
+    const full = session.user.adminFullAccess === true;
+    const sections = session.user.adminAllowedSections ?? [];
+    const can = (s: string) => full || sections.includes(s);
+    try {
+      if (can("overview")) {
+        const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
+        if (statsRes.ok) {
+          const s = await statsRes.json();
+          if (typeof s?.totalUsers === "number") setStats(s);
+        } else {
+          console.error("Stats API failed:", await statsRes.text());
+        }
+      }
+
+      if (can("settings")) {
+        const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
+        if (settingsRes.ok) {
+          const l = await settingsRes.json();
+          if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
+        }
+      }
+
+      if (can("overview")) {
+        const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
+        if (treeRes.ok) {
+          const t = await treeRes.json();
+          if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
+        }
+      }
+
+      if (can("withdrawals")) {
+        const withdrawalsRes = await fetch("/api/admin/withdrawals", { cache: "no-store" });
+        if (withdrawalsRes.ok) {
+          const data = await withdrawalsRes.json();
+          setPendingWithdrawals(data.items || []);
+        }
+      }
+
+      if (can("deposits")) {
+        const depositsQ = depositStatus === "all" ? "" : `?status=${encodeURIComponent(depositStatus)}`;
+        const depositsRes = await fetch(`/api/admin/deposits${depositsQ}`, { cache: "no-store" });
+        if (depositsRes.ok) {
+          const data = await depositsRes.json();
+          setDeposits(data.items || []);
+        }
+      }
+    } catch (err) {
+      console.error("Admin data load error:", err);
+      setAdminUiMsg("Some admin data failed to load");
+    }
+  }, [
+    depositStatus,
+    session?.user?.adminAllowedSections,
+    session?.user?.adminFullAccess,
+    session?.user?.id,
+    session?.user?.status,
+    status,
+  ]);
+
+  const fetchPaymentHistory = useCallback(
+    async (silent = false) => {
+      if (status !== "authenticated" || !session?.user?.id || session.user.status !== "admin") return;
+      if (!silent) setPaymentHistoryLoading(true);
+      try {
+        const res = await fetch(`/api/admin/payment-history?type=${paymentHistoryKind}`, { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.items)) setPaymentHistoryItems(data.items);
+        else setPaymentHistoryItems([]);
+      } catch {
+        setPaymentHistoryItems([]);
+      } finally {
+        if (!silent) setPaymentHistoryLoading(false);
+      }
+    },
+    [paymentHistoryKind, session?.user?.id, session?.user?.status, status],
+  );
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    fetchAdminDashboardData().catch(() => setAdminUiMsg("Failed to load admin data"));
+  }, [fetchAdminDashboardData, session?.user?.id, session?.user?.status, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    if (active !== "payments") return;
+    fetchPaymentHistory(false).catch(() => undefined);
+  }, [active, fetchPaymentHistory, session?.user?.id, session?.user?.status, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetchAdminDashboardData().catch(() => undefined);
+      if (active === "users") fetchAdminUsers(true).catch(() => undefined);
+      if (active === "payments") fetchPaymentHistory(true).catch(() => undefined);
+    };
+    const id = window.setInterval(refresh, ADMIN_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const onFocus = () => refresh();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [active, fetchAdminDashboardData, fetchAdminUsers, fetchPaymentHistory, session?.user?.id, session?.user?.status, status]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -351,55 +658,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (status !== "authenticated") return;
-    if (!session?.user?.id || session.user.status !== "admin") {
-      return;
-    }
-    const load = async () => {
-      try {
-        const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
-        if (statsRes.ok) {
-          const s = await statsRes.json();
-          if (typeof s?.totalUsers === "number") setStats(s);
-        } else {
-          console.error("Stats API failed:", await statsRes.text());
-        }
-
-        const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
-        if (settingsRes.ok) {
-          const l = await settingsRes.json();
-          if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
-        }
-
-        const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
-        if (treeRes.ok) {
-          const t = await treeRes.json();
-          if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
-        }
-
-        const withdrawalsRes = await fetch("/api/admin/withdrawals", { cache: "no-store" });
-        if (withdrawalsRes.ok) {
-          const data = await withdrawalsRes.json();
-          setPendingWithdrawals(data.items || []);
-        }
-
-        const depositsRes = await fetch("/api/admin/deposits", { cache: "no-store" });
-        if (depositsRes.ok) {
-          const data = await depositsRes.json();
-          setDeposits(data.items || []);
-        }
-      } catch (err) {
-        console.error("Admin data load error:", err);
-        setAdminUiMsg("Some admin data failed to load");
-      }
-    };
-    load().catch(() => setAdminUiMsg("Failed to load admin data"));
-  }, [router, session?.user?.id, session?.user?.status, status]);
-
-  useEffect(() => {
-    if (status !== "authenticated") return;
     if (!session?.user?.id || session.user.status !== "admin") return;
     if (active !== "users") return;
-    fetchAdminUsers().catch(() => undefined);
+    fetchAdminUsers(false).catch(() => undefined);
   }, [active, fetchAdminUsers, session?.user?.id, session?.user?.status, status]);
 
   const initials = useMemo(() => {
@@ -416,6 +677,26 @@ export default function AdminPage() {
 
   if (status !== "authenticated" || !session?.user?.id || session.user.status !== "admin") {
     return <AdminLoginForm />;
+  }
+
+  if (!session.user.adminFullAccess && (session.user.adminAllowedSections?.length ?? 0) === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-transparent p-6">
+        <div className="w-full max-w-md rounded-3xl bg-card p-8 text-center shadow-xl ring-1 ring-ring">
+          <div className="text-lg font-semibold text-foreground">No admin panel access</div>
+          <p className="mt-2 text-sm text-subtext">
+            This account has no sections assigned. Ask a super admin to set a role for you.
+          </p>
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="mt-6 w-full rounded-full bg-primary py-3 text-sm font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -461,11 +742,14 @@ export default function AdminPage() {
             <div className="rounded-3xl bg-card p-3 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
               <div className="px-3 py-2 text-xs font-medium text-subtext">Navigation</div>
               <div className="mt-1 grid gap-1">
-                {navItems.map((item) => (
+                {visibleNavItems.map((item) => (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => setActive(item.key)}
+                    onClick={() => {
+                      setActive(item.key as AdminNavKey);
+                      setPaymentHistoryOpen(false);
+                    }}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === item.key ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                     }`}
@@ -474,6 +758,46 @@ export default function AdminPage() {
                     {active === item.key ? <span className="text-primary">●</span> : null}
                   </button>
                 ))}
+                {canAdminSection("payments") ? (
+                <div className="grid gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentHistoryOpen((v) => !v)}
+                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                      active === "payments" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                    }`}
+                    aria-expanded={paymentHistoryOpen}
+                  >
+                    <span>Payment History</span>
+                    <span className={`transition-transform ${paymentHistoryOpen ? "rotate-90" : ""}`}>›</span>
+                  </button>
+                  <div
+                    className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${
+                      paymentHistoryOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                      {PAYMENT_HISTORY_SUB.map((sub) => (
+                        <button
+                          key={sub.key}
+                          type="button"
+                          onClick={() => openPaymentSub(sub.key)}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                            active === "payments" && paymentHistoryKind === sub.key
+                              ? "bg-muted text-foreground"
+                              : "text-subtext hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span>{sub.label}</span>
+                          {active === "payments" && paymentHistoryKind === sub.key ? (
+                            <span className="text-primary">●</span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                ) : null}
               </div>
             </div>
           </aside>
@@ -499,23 +823,28 @@ export default function AdminPage() {
                       >
                         Logout
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setActive("payouts")}
-                        className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
-                      >
-                        Verify Deposit
-                      </button>
+                      {canAdminSection("payouts") ? (
+                        <button
+                          type="button"
+                          onClick={() => setActive("payouts")}
+                          className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
+                        >
+                          Verify Deposit
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} hint="All statuses" />
-                    <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} hint="Transaction type: deposit" />
-                    <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} hint="Admin profit" />
-                    <StatCard label="All User Wallet" value={toUSD(Number(stats?.allUserWallet ?? 0))} hint="Sum of all user balances" />
-                    <StatCard label="Available Balance" value={toUSD(Number(stats?.availableBalance ?? 0))} hint="Admin wallet" />
-                    <StatCard label="Today Earning" value={toUSD(Number(stats?.todayEarning ?? 0))} hint="Admin commissions today" />
-                    <StatCard label="System Balance" value={toUSD(Number(stats?.systemBalance ?? 0))} hint="Sum of balances" />
+                    <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} />
+                    <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} />
+                    <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} />
+                    <StatCard label="All User Wallet" value={toUSD(Number(stats?.allUserWallet ?? 0))} />
+                    <StatCard label="All User Withdraw" value={toUSD(Number(stats?.allUserWithdraw ?? 0))} />
+                    <StatCard label="Platform Fee Pool" value={toUSD(Number(stats?.platformFeePool ?? 0))} />
+                    <StatCard label="Charity" value={toUSD(Number(stats?.charityTotal ?? 0))} />
+                    <StatCard label="Available Balance" value={toUSD(Number(stats?.availableBalance ?? 0))} />
+                    <StatCard label="Today Earning" value={toUSD(Number(stats?.todayEarning ?? 0))} />
+                    <StatCard label="System Balance" value={toUSD(Number(stats?.systemBalance ?? 0))} />
                   </div>
                 </div>
               </>
@@ -565,11 +894,11 @@ export default function AdminPage() {
                 ) : null}
                 <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar bg-card shadow-inner">
                   <div className="min-w-[900px]">
-                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_1.15fr_0.65fr_1.5fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
                       <div>User</div>
                       <div>Status</div>
                       <div>Verify</div>
-                      <div>Balance</div>
+                      <div>Balances</div>
                       <div>Downline</div>
                       <div className="text-center">Action</div>
                     </div>
@@ -592,7 +921,7 @@ export default function AdminPage() {
                           );
                         })
                         .map((u) => (
-                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.8fr_1.5fr] gap-2 px-4 py-4 text-sm transition hover:bg-muted/30">
+                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_1.15fr_0.65fr_1.5fr] gap-2 px-4 py-4 text-sm transition hover:bg-muted/30">
                             <div className="min-w-0">
                               <div className="truncate font-medium text-foreground">{u.username}</div>
                               <div className="truncate text-[10px] text-subtext">{u.email}</div>
@@ -627,7 +956,14 @@ export default function AdminPage() {
                                 <span className="text-xs text-subtext">—</span>
                               )}
                             </div>
-                            <div className="text-subtext flex items-center">{String(u.balance ?? 0)}</div>
+                            <div className="flex min-w-0 flex-col gap-0.5 text-[10px] sm:text-xs leading-tight">
+                              <div className="tabular-nums text-foreground">
+                                Balance: {toUSD(Number(u.usdtBalance ?? 0))}
+                              </div>
+                              <div className="tabular-nums text-subtext">
+                                Withdraw: {toUSD(Number(u.withdrawBalance ?? 0))}
+                              </div>
+                            </div>
                             <div className="text-subtext flex items-center">{String(u.downlineCount ?? 0)}</div>
                             <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                               <button
@@ -640,19 +976,37 @@ export default function AdminPage() {
                               </button>
                               <button
                                 type="button"
-                                title="Login as User"
-                                onClick={async () => {
+                                title="Open user dashboard (new tab)"
+                                onClick={() => {
                                   setConfirmModal({
-                                    message: `You are about to login as ${u.username}. You will be logged out of the admin panel and redirected to the user dashboard.`,
-                                    confirmLabel: "Login as User",
+                                    message: `Open ${u.username}'s dashboard in a new tab? Your admin session stays on this tab; the other tab uses a secure view token (no logout).`,
+                                    confirmLabel: "Open dashboard",
                                     onConfirm: async () => {
                                       setConfirmModal(null);
-                                      await signIn("credentials", {
-                                        email: u.email,
-                                        isImpersonation: "true",
-                                        adminToken: "admin123", // Using fixed adminToken for simplicity as per auth.ts logic
-                                        callbackUrl: "/dashboard",
-                                      });
+                                      try {
+                                        const res = await fetch("/api/admin/impersonate-token", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ email: u.email }),
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) {
+                                          toast.error(typeof data?.error === "string" ? data.error : "Failed");
+                                          return;
+                                        }
+                                        const token = data?.token as string | undefined;
+                                        if (!token) {
+                                          toast.error("No token returned");
+                                          return;
+                                        }
+                                        window.open(
+                                          `/dashboard?imp=${encodeURIComponent(token)}`,
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        );
+                                      } catch {
+                                        toast.error("Failed to open dashboard");
+                                      }
                                     },
                                   });
                                 }}
@@ -920,6 +1274,214 @@ export default function AdminPage() {
               </div>
             ) : null}
 
+            {active === "roles" && adminFullAccess ? (
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+                <div className="text-sm font-semibold">Admin roles</div>
+                <div className="mt-1 text-sm text-subtext">
+                  Each role creates one staff admin user. They must sign in at{" "}
+                  <span className="font-medium text-foreground">/role</span> with the email and password you set here (the
+                  normal home-page login will not work for this account).
+                </div>
+                <form
+                  className="mt-6 grid gap-4 rounded-2xl bg-muted/40 p-4 ring-1 ring-ring"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const name = newRoleName.trim();
+                    if (!name) {
+                      toast.error("Enter a role name");
+                      return;
+                    }
+                    const staffName = newStaffName.trim();
+                    const staffEmail = newStaffEmail.trim().toLowerCase();
+                    const staffPassword = newStaffPassword;
+                    if (!staffName || !staffEmail || !staffPassword) {
+                      toast.error("Staff name, email, and password are required");
+                      return;
+                    }
+                    if (staffPassword.length < 6) {
+                      toast.error("Password must be at least 6 characters");
+                      return;
+                    }
+                    const permissions = ROLE_CHECKBOX_OPTIONS.filter((o) => newRolePerms[o.key]).map((o) => o.key);
+                    try {
+                      const res = await fetch("/api/admin/roles", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          name,
+                          permissions,
+                          staffName,
+                          staffEmail,
+                          staffPassword,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        toast.error(typeof data?.error === "string" ? data.error : "Create failed");
+                        return;
+                      }
+                      toast.success("Role created");
+                      setNewRoleName("");
+                      setNewStaffName("");
+                      setNewStaffEmail("");
+                      setNewStaffPassword("");
+                      setNewRolePerms({});
+                      const res2 = await fetch("/api/admin/roles", { cache: "no-store" });
+                      const j2 = await res2.json();
+                      if (res2.ok && Array.isArray(j2?.roles)) {
+                        setRolesList(
+                          j2.roles.map(
+                            (r: {
+                              id: string;
+                              name: string;
+                              permissions: unknown;
+                              _count?: { users: number };
+                              users?: { email: string; username: string }[];
+                            }) => ({
+                              id: r.id,
+                              name: r.name,
+                              permissions: Array.isArray(r.permissions)
+                                ? r.permissions.filter((x: unknown) => typeof x === "string")
+                                : [],
+                              _count: r._count,
+                              staffUser: r.users?.[0] ?? null,
+                            }),
+                          ),
+                        );
+                      }
+                    } catch {
+                      toast.error("Create failed");
+                    }
+                  }}
+                >
+                  <div className="text-xs font-medium text-subtext">New role</div>
+                  <input
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    placeholder="Role name (e.g. Support admin)"
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1">
+                      <span className="text-xs font-medium text-subtext">Staff name (display)</span>
+                      <input
+                        value={newStaffName}
+                        onChange={(e) => setNewStaffName(e.target.value)}
+                        placeholder="Full name"
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className="text-xs font-medium text-subtext">Login email</span>
+                      <input
+                        type="email"
+                        value={newStaffEmail}
+                        onChange={(e) => setNewStaffEmail(e.target.value)}
+                        placeholder="staff@example.com"
+                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </label>
+                  </div>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-subtext">Login password</span>
+                    <input
+                      type="password"
+                      value={newStaffPassword}
+                      onChange={(e) => setNewStaffPassword(e.target.value)}
+                      placeholder="Min 6 characters"
+                      autoComplete="new-password"
+                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ROLE_CHECKBOX_OPTIONS.map((o) => (
+                      <label key={o.key} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(newRolePerms[o.key])}
+                          onChange={(ev) =>
+                            setNewRolePerms((prev) => ({ ...prev, [o.key]: ev.target.checked }))
+                          }
+                        />
+                        <span>{o.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Create role
+                  </button>
+                </form>
+                <div className="mt-8 text-sm font-semibold">Existing roles</div>
+                {rolesLoading ? (
+                  <div className="mt-4 text-sm text-subtext">Loading…</div>
+                ) : (
+                  <div className="mt-4 grid gap-3">
+                    {rolesList.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex flex-col gap-4 rounded-2xl bg-muted/30 p-4 ring-1 ring-ring sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div>
+                          <div className="font-medium text-foreground">{r.name}</div>
+                          {r.staffUser ? (
+                            <div className="mt-1 text-xs text-subtext">
+                              Login: <span className="text-foreground">{r.staffUser.email}</span> ({r.staffUser.username})
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-subtext">No staff login linked</div>
+                          )}
+                          <div className="mt-1 text-xs text-subtext">
+                            {(r.permissions ?? []).length ? r.permissions.join(", ") : "No sections"}
+                          </div>
+                          <div className="mt-1 text-xs text-subtext">
+                            {r._count?.users ?? 0} admin user(s)
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingRole({ id: r.id, name: r.name, permissions: [...r.permissions] })}
+                            className="rounded-full bg-card px-4 py-2 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`Delete role "${r.name}"? Staff login(s) for this role will be removed.`)) return;
+                              try {
+                                const res = await fetch(`/api/admin/roles?id=${encodeURIComponent(r.id)}`, {
+                                  method: "DELETE",
+                                });
+                                if (!res.ok) {
+                                  const data = await res.json();
+                                  toast.error(typeof data?.error === "string" ? data.error : "Delete failed");
+                                  return;
+                                }
+                                toast.success("Role deleted");
+                                setRolesList((prev) => prev.filter((x) => x.id !== r.id));
+                              } catch {
+                                toast.error("Delete failed");
+                              }
+                            }}
+                            className="rounded-full bg-red-600/10 px-4 py-2 text-xs font-medium text-red-600 ring-1 ring-red-600/20 transition hover:bg-red-600 hover:text-white"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {rolesList.length === 0 ? (
+                      <div className="text-sm text-subtext">No roles yet. Create one above.</div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {active === "withdrawals" ? (
                 <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                   <div className="flex items-center justify-between gap-3">
@@ -1108,6 +1670,199 @@ export default function AdminPage() {
               </div>
             ) : null}
 
+            {active === "payments" ? (
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-sm text-subtext">Payment History</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">{paymentHistoryKindLabel[paymentHistoryKind]}</div>
+                    <div className="mt-1 text-sm text-subtext">
+                      Deposits, withdrawals, commissions, charity & fee pool — pick a tab in the sidebar
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchPaymentHistory(false).catch(() => undefined)}
+                    className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-card px-5 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {paymentHistoryLoading ? (
+                  <div className="mt-6 px-4 py-8 text-center text-sm text-subtext">Loading…</div>
+                ) : (
+                  <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring bg-card shadow-inner custom-scrollbar">
+                    {paymentHistoryKind === "deposits" && (
+                      <div className="min-w-[900px]">
+                        <div className="grid grid-cols-[1.1fr_1fr_0.75fr_0.75fr_1fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                          <div>Time</div>
+                          <div>User</div>
+                          <div>Amount</div>
+                          <div>Status</div>
+                          <div>Tx hash</div>
+                        </div>
+                        <div className="divide-y divide-ring/50">
+                          {paymentHistoryItems.map((row: any) => (
+                            <div key={row.id} className="grid grid-cols-[1.1fr_1fr_0.75fr_0.75fr_1fr] gap-2 px-4 py-3 text-sm">
+                              <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{row.user?.username}</div>
+                                <div className="truncate text-xs text-subtext">{row.user?.email}</div>
+                              </div>
+                              <div className="font-medium">{toUSD(Number(row.amount))}</div>
+                              <div className="text-xs">{row.status}</div>
+                              <div className="break-all font-mono text-xs text-subtext">{row.txHash}</div>
+                            </div>
+                          ))}
+                          {paymentHistoryItems.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {paymentHistoryKind === "withdrawals" && (
+                      <div className="min-w-[1000px]">
+                        <div className="grid grid-cols-[1fr_1fr_0.7fr_0.7fr_0.7fr_0.6fr_1fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                          <div>Time</div>
+                          <div>User</div>
+                          <div>Net payout</div>
+                          <div>Gross</div>
+                          <div>Fee</div>
+                          <div>Status</div>
+                          <div>Address</div>
+                        </div>
+                        <div className="divide-y divide-ring/50">
+                          {paymentHistoryItems.map((row: any) => (
+                            <div key={row.id} className="grid grid-cols-[1fr_1fr_0.7fr_0.7fr_0.7fr_0.6fr_1fr] gap-2 px-4 py-3 text-sm">
+                              <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{row.user?.username}</div>
+                                <div className="truncate text-xs text-subtext">{row.user?.email}</div>
+                              </div>
+                              <div>{toUSD(Number(row.netPayout))}</div>
+                              <div className="text-subtext">
+                                {row.grossRequested != null ? toUSD(row.grossRequested) : "—"}
+                              </div>
+                              <div className="text-subtext">
+                                {row.feeAmount != null ? toUSD(row.feeAmount) : "—"}
+                              </div>
+                              <div className="text-xs">{row.status}</div>
+                              <div className="break-all text-xs text-subtext">{row.address}</div>
+                            </div>
+                          ))}
+                          {paymentHistoryItems.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {paymentHistoryKind === "commissions" && (
+                      <div className="min-w-[900px]">
+                        <div className="grid grid-cols-[1.05fr_1.35fr_1.1fr_0.8fr_1.2fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                          <div>Time</div>
+                          <div>From (source)</div>
+                          <div>Breakdown</div>
+                          <div>Total</div>
+                          <div>Note</div>
+                        </div>
+                        <div className="divide-y divide-ring/50">
+                          {paymentHistoryItems.map((row: any) => (
+                            <div key={row.id} className="grid grid-cols-[1.05fr_1.35fr_1.1fr_0.8fr_1.2fr] gap-2 px-4 py-3 text-sm">
+                              <div className="text-xs text-subtext whitespace-nowrap">{new Date(row.at).toLocaleString()}</div>
+                              <div className="min-w-0 truncate text-sm" title={`${row.fromUser?.username ?? ""} · ${row.fromUser?.email ?? ""}`}>
+                                <span className="font-medium text-foreground">{row.fromUser?.username ?? "—"}</span>
+                                <span className="text-subtext"> · {row.fromUser?.email ?? ""}</span>
+                              </div>
+                              <div className="min-w-0 text-xs text-subtext leading-snug">{row.breakdown ?? (row.level != null ? `L${row.level}` : "—")}</div>
+                              <div className="font-medium text-primary whitespace-nowrap">{toUSD(Number(row.amount))}</div>
+                              <div className="min-w-0 truncate text-xs text-subtext" title={row.note}>
+                                {row.note || "—"}
+                              </div>
+                            </div>
+                          ))}
+                          {paymentHistoryItems.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-subtext">No admin commission records</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {paymentHistoryKind === "charity" && (
+                      <div className="min-w-[900px]">
+                        <div className="grid grid-cols-[1fr_1fr_0.75fr_0.75fr_0.75fr_0.6fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                          <div>Time</div>
+                          <div>User (withdrawal)</div>
+                          <div>Charity share</div>
+                          <div>Total fee</div>
+                          <div>Gross req.</div>
+                          <div>WD status</div>
+                        </div>
+                        <div className="divide-y divide-ring/50">
+                          {paymentHistoryItems.map((row: any) => (
+                            <div key={row.id} className="grid grid-cols-[1fr_1fr_0.75fr_0.75fr_0.75fr_0.6fr] gap-2 px-4 py-3 text-sm">
+                              <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{row.user?.username}</div>
+                                <div className="truncate text-xs text-subtext">{row.user?.email}</div>
+                              </div>
+                              <div className="font-medium">{toUSD(Number(row.amount))}</div>
+                              <div className="text-subtext">
+                                {row.feeAmount != null ? toUSD(row.feeAmount) : "—"}
+                              </div>
+                              <div className="text-subtext">
+                                {row.grossRequested != null ? toUSD(row.grossRequested) : "—"}
+                              </div>
+                              <div className="text-xs">{row.withdrawalStatus}</div>
+                            </div>
+                          ))}
+                          {paymentHistoryItems.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-subtext">
+                              No charity rows yet (logged when users request withdrawals after fee split is stored)
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {paymentHistoryKind === "fee" && (
+                      <div className="min-w-[900px]">
+                        <div className="grid grid-cols-[1fr_1fr_0.75fr_0.75fr_0.75fr_0.6fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                          <div>Time</div>
+                          <div>User (withdrawal)</div>
+                          <div>Fee pool share</div>
+                          <div>Total fee</div>
+                          <div>Charity share</div>
+                          <div>WD status</div>
+                        </div>
+                        <div className="divide-y divide-ring/50">
+                          {paymentHistoryItems.map((row: any) => (
+                            <div key={row.id} className="grid grid-cols-[1fr_1fr_0.75fr_0.75fr_0.75fr_0.6fr] gap-2 px-4 py-3 text-sm">
+                              <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{row.user?.username}</div>
+                                <div className="truncate text-xs text-subtext">{row.user?.email}</div>
+                              </div>
+                              <div className="font-medium">{toUSD(Number(row.amount))}</div>
+                              <div className="text-subtext">
+                                {row.feeAmount != null ? toUSD(row.feeAmount) : "—"}
+                              </div>
+                              <div className="text-subtext">
+                                {row.charityAmount != null ? toUSD(row.charityAmount) : "—"}
+                              </div>
+                              <div className="text-xs">{row.withdrawalStatus}</div>
+                            </div>
+                          ))}
+                          {paymentHistoryItems.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-subtext">
+                              No fee-pool rows yet (same as charity — from withdrawal fee splits)
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {active === "overview" && adminTreeNodes ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1168,12 +1923,13 @@ export default function AdminPage() {
               </button>
             </div>
             <div className="px-3 pb-4">
-              {navItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <button
                   key={item.key}
                   type="button"
                   onClick={() => {
-                    setActive(item.key);
+                    setActive(item.key as AdminNavKey);
+                    setPaymentHistoryOpen(false);
                     setMobileNavOpen(false);
                   }}
                   className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
@@ -1184,7 +1940,142 @@ export default function AdminPage() {
                   {active === item.key ? <span className="text-primary">●</span> : null}
                 </button>
               ))}
+              {canAdminSection("payments") ? (
+              <div className="mt-1 grid gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPaymentHistoryOpen((v) => !v)}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                    active === "payments" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
+                  }`}
+                  aria-expanded={paymentHistoryOpen}
+                >
+                  <span>Payment History</span>
+                  <span className={`transition-transform ${paymentHistoryOpen ? "rotate-90" : ""}`}>›</span>
+                </button>
+                <div
+                  className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${
+                    paymentHistoryOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                    {PAYMENT_HISTORY_SUB.map((sub) => (
+                      <button
+                        key={sub.key}
+                        type="button"
+                        onClick={() => openPaymentSub(sub.key)}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                          active === "payments" && paymentHistoryKind === sub.key
+                            ? "bg-muted text-foreground"
+                            : "text-subtext hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        <span>{sub.label}</span>
+                        {active === "payments" && paymentHistoryKind === sub.key ? (
+                          <span className="text-primary">●</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              ) : null}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editingRole ? (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4">
+          <button
+            type="button"
+            onClick={() => setEditingRole(null)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-ring">
+            <div className="border-b border-ring bg-muted/30 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">Edit role</h3>
+                <button
+                  type="button"
+                  onClick={() => setEditingRole(null)}
+                  className="rounded-xl p-2 hover:bg-muted transition text-subtext"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <form
+              className="max-h-[80vh] space-y-4 overflow-y-auto p-6"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const name = editRoleName.trim();
+                if (!name) {
+                  toast.error("Enter a name");
+                  return;
+                }
+                const permissions = ROLE_CHECKBOX_OPTIONS.filter((o) => editRolePerms[o.key]).map((o) => o.key);
+                try {
+                  const res = await fetch("/api/admin/roles", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: editingRole.id, name, permissions }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                    return;
+                  }
+                  toast.success("Role updated");
+                  setRolesList((prev) =>
+                    prev.map((x) =>
+                      x.id === editingRole.id ? { ...x, name, permissions } : x,
+                    ),
+                  );
+                  setEditingRole(null);
+                } catch {
+                  toast.error("Update failed");
+                }
+              }}
+            >
+              <label className="block">
+                <span className="text-xs font-medium text-subtext">Name</span>
+                <input
+                  value={editRoleName}
+                  onChange={(e) => setEditRoleName(e.target.value)}
+                  className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ROLE_CHECKBOX_OPTIONS.map((o) => (
+                  <label key={o.key} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(editRolePerms[o.key])}
+                      onChange={(ev) =>
+                        setEditRolePerms((prev) => ({ ...prev, [o.key]: ev.target.checked }))
+                      }
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingRole(null)}
+                  className="rounded-full bg-muted px-6 py-2 text-sm font-medium text-foreground hover:bg-muted/80 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary/90 transition shadow-lg shadow-primary/20"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
@@ -1214,19 +2105,22 @@ export default function AdminPage() {
               onSubmit={async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
-                const data = {
+                const data: Record<string, unknown> = {
                   id: editingUser.id,
                   username: formData.get("username"),
                   email: formData.get("email"),
                   phone: formData.get("phone"),
                   country: formData.get("country"),
-                  balance: formData.get("balance"),
                   withdrawBalance: formData.get("withdrawBalance"),
                   usdtBalance: formData.get("usdtBalance"),
                   status: formData.get("status"),
                   securityCode: formData.get("securityCode"),
                   permanentWithdrawAddress: formData.get("permanentWithdrawAddress"),
                 };
+                if (adminFullAccess) {
+                  const ar = formData.get("adminRoleId");
+                  data.adminRoleId = ar === "" || ar == null ? null : String(ar);
+                }
                 try {
                   const res = await fetch("/api/admin/users/update", {
                     method: "PATCH",
@@ -1281,32 +2175,22 @@ export default function AdminPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-subtext">Main Balance ($)</span>
-                  <input
-                    name="balance"
-                    type="number"
-                    step="0.01"
-                    defaultValue={editingUser.balance}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-subtext">Withdrawal Wallet ($)</span>
-                  <input
-                    name="withdrawBalance"
-                    type="number"
-                    step="0.01"
-                    defaultValue={editingUser.withdrawBalance || 0}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-subtext">USDT Wallet ($)</span>
+                  <span className="text-xs font-medium text-subtext">Balance ($)</span>
                   <input
                     name="usdtBalance"
                     type="number"
                     step="0.01"
                     defaultValue={editingUser.usdtBalance || 0}
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-subtext">Withdraw wallet ($)</span>
+                  <input
+                    name="withdrawBalance"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingUser.withdrawBalance || 0}
                     className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
                   />
                 </label>
@@ -1340,6 +2224,23 @@ export default function AdminPage() {
                     <option value="admin">Admin</option>
                   </select>
                 </label>
+                {adminFullAccess && editingUser.status === "admin" ? (
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-subtext">Admin role (restrict panel sections)</span>
+                    <select
+                      name="adminRoleId"
+                      defaultValue={editingUser.adminRoleId ?? ""}
+                      className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    >
+                      <option value="">Full access (no role restriction)</option>
+                      {adminRolesForSelect.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <div className="mt-6 flex items-center justify-end gap-3">
                 <button

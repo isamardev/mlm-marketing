@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { getUserApiContext } from "@/lib/user-api-auth";
 import { Prisma } from "@prisma/client";
+import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
+import { splitWithdrawalFeeToCharityAndFeePool } from "@/lib/platform-fee-split";
 
 const schema = z.object({
   amount: z.number().positive(),
@@ -12,11 +14,15 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.effectiveStatus === "inactive") {
+      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
     }
-    
+    if (ctx.effectiveStatus === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
+    }
+
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -24,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     const db = getDb();
-    const userId = session.user.id;
+    const userId = ctx.userId;
     const { amount, address, securityCode } = parsed.data;
 
     const user = await db.user.findUnique({ where: { id: userId } });
@@ -84,22 +90,32 @@ export async function POST(req: Request) {
       }
     }
 
-    const amt = Number(amount.toFixed(2));
-    if (withdrawBalance < amt) {
+    const gross = Number(amount.toFixed(2));
+    if (gross < MIN_WITHDRAW_OR_P2P_USDT) {
+      return NextResponse.json(
+        { error: `Minimum withdrawal amount is ${MIN_WITHDRAW_OR_P2P_USDT} USDT` },
+        { status: 400 },
+      );
+    }
+    if (withdrawBalance < gross) {
       return NextResponse.json({ error: "Insufficient balance in withdrawal wallet" }, { status: 400 });
     }
 
+    const net = withdrawNetAfterFee(gross);
+    const feeAmount = Number((gross - net).toFixed(2));
+    const { charity: charityShare, feePool: feePoolShare } = splitWithdrawalFeeToCharityAndFeePool(feeAmount);
+
     const withdrawal = await db.$transaction(async (tx) => {
-      // Update withdrawBalance using raw SQL if necessary
+      // Deduct full requested (gross) from withdraw wallet; payout record is net after fee.
       try {
         await tx.user.update({
           where: { id: userId },
-          data: { withdrawBalance: { decrement: new Prisma.Decimal(amt.toFixed(2)) } } as any,
+          data: { withdrawBalance: { decrement: new Prisma.Decimal(gross.toFixed(2)) } } as any,
         });
       } catch (e) {
         await tx.$executeRawUnsafe(
           `UPDATE "User" SET "withdrawBalance" = "withdrawBalance" - $1 WHERE id = $2`,
-          amt, userId
+          gross, userId
         );
       }
       
@@ -108,17 +124,23 @@ export async function POST(req: Request) {
           userId,
           sourceUserId: userId,
           level: 0,
-          amount: new Prisma.Decimal((-amt).toFixed(2)),
+          amount: new Prisma.Decimal((-gross).toFixed(2)),
           type: "adjustment",
-          note: "Withdrawal request lock (from withdraw wallet)",
+          note: `Withdrawal request lock (from withdraw wallet, ${WITHDRAW_FEE_PERCENT}% fee)`,
         },
       });
       const w = await tx.withdrawal.create({
         data: {
           userId,
           address,
-          amount: new Prisma.Decimal(amt.toFixed(2)),
+          amount: new Prisma.Decimal(net.toFixed(2)),
           status: "pending",
+          grossRequested: new Prisma.Decimal(gross.toFixed(2)),
+          feeAmount: new Prisma.Decimal(feeAmount.toFixed(2)),
+          charityAmount:
+            charityShare > 0 ? new Prisma.Decimal(charityShare.toFixed(2)) : null,
+          feePoolAmount:
+            feePoolShare > 0 ? new Prisma.Decimal(feePoolShare.toFixed(2)) : null,
         },
       });
       await tx.notification.create({
@@ -126,9 +148,25 @@ export async function POST(req: Request) {
           userId,
           type: "system",
           title: "Withdrawal requested",
-          message: `Amount ${amt} to ${address}`,
+          message: `You will receive ${net} USDT (${WITHDRAW_FEE_PERCENT}% fee deducted from ${gross} USDT) to ${address}`,
         },
       });
+
+      if (charityShare > 0 || feePoolShare > 0) {
+        await tx.platformFund.upsert({
+          where: { id: "default" },
+          create: {
+            id: "default",
+            charityTotal: new Prisma.Decimal(charityShare.toFixed(2)),
+            feePoolTotal: new Prisma.Decimal(feePoolShare.toFixed(2)),
+          },
+          update: {
+            charityTotal: { increment: new Prisma.Decimal(charityShare.toFixed(2)) },
+            feePoolTotal: { increment: new Prisma.Decimal(feePoolShare.toFixed(2)) },
+          },
+        });
+      }
+
       return w;
     });
 

@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { getUserMainAndUsdtBalance } from "@/lib/user-balances";
 
 type PayoutResult = {
   level: number;
@@ -68,7 +69,7 @@ export async function runMlmPayoutEngine(params: {
       if (amountNum > 0) {
         await tx.user.update({
           where: { id: currentParentId },
-          data: { balance: { increment: new Prisma.Decimal(amountNum.toFixed(2)) } },
+          data: { withdrawBalance: { increment: new Prisma.Decimal(amountNum.toFixed(2)) } } as any,
         });
         await tx.notification.create({
           data: {
@@ -117,18 +118,46 @@ export async function runActivationPayoutEngine(params: {
   const payouts: PayoutResult[] = [];
 
   await db.$transaction(async (tx) => {
-    // 1. Deduct activation amount and set status to active
-    const user = await tx.user.update({
-      where: { id: sourceUserId },
-      data: { 
-        balance: { decrement: new Prisma.Decimal(activationAmount.toFixed(2)) },
-        status: "active"
-      },
-      select: { id: true, referredById: true, username: true, balance: true }
-    });
-
-    if (Number(user.balance) < 0) {
+    // 1. Deduct activation from main balance first, then USDT wallet (same $10 total)
+    const { main: mainBal, usdt: usdtBal } = await getUserMainAndUsdtBalance(tx, sourceUserId);
+    const total = Number((mainBal + usdtBal).toFixed(2));
+    if (total < activationAmount) {
       throw new Error("Insufficient balance for activation");
+    }
+    const fromMain = Math.min(mainBal, activationAmount);
+    const fromUsdt = Number((activationAmount - fromMain).toFixed(2));
+
+    if (fromMain > 0 && fromUsdt > 0) {
+      await tx.$executeRawUnsafe(
+        `UPDATE "User" SET balance = COALESCE(balance,0) - $1, "usdtBalance" = COALESCE("usdtBalance",0) - $2 WHERE id = $3`,
+        fromMain,
+        fromUsdt,
+        sourceUserId,
+      );
+      await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
+    } else if (fromMain > 0) {
+      await tx.user.update({
+        where: { id: sourceUserId },
+        data: {
+          balance: { decrement: new Prisma.Decimal(fromMain.toFixed(2)) },
+          status: "active",
+        },
+      });
+    } else if (fromUsdt > 0) {
+      await tx.$executeRawUnsafe(
+        `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance",0) - $1 WHERE id = $2`,
+        fromUsdt,
+        sourceUserId,
+      );
+      await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
+    }
+
+    const user = await tx.user.findUnique({
+      where: { id: sourceUserId },
+      select: { id: true, referredById: true, username: true, balance: true },
+    });
+    if (!user) {
+      throw new Error("User not found after activation");
     }
 
     // 2. Create activation transaction
@@ -163,7 +192,7 @@ export async function runActivationPayoutEngine(params: {
 
       await tx.user.update({
         where: { id: beneficiaryId },
-        data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
+        data: { withdrawBalance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } } as any,
       });
       await tx.notification.create({
         data: {
@@ -334,4 +363,3 @@ export async function runFixedPayoutEngine(params: {
 
   return { sourceUserId, depositAmount, payouts };
 }
-

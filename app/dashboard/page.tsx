@@ -1,12 +1,13 @@
 "use client";
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { FaUser, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaTelegramPlane, FaWhatsapp, FaCog, FaSignOutAlt, FaUserCircle } from "react-icons/fa";
+import { FaUser, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaTelegramPlane, FaWhatsapp, FaCog, FaSignOutAlt, FaUserCircle, FaEye, FaEyeSlash } from "react-icons/fa";
 import DepositButton from "@/components/DepositButton.jsx";
 import { toast } from "react-toastify";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
+import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -190,6 +191,11 @@ function WithdrawSection({ profile }: { profile: any }) {
   const [securityCode, setSecurityCode] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
 
+  const withdrawGrossPreview = useMemo(() => {
+    const n = Number(withdrawAmount);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [withdrawAmount]);
+
   // Update address if profile changes (e.g. after saving it in settings)
   useEffect(() => {
     if (profile?.permanentWithdrawAddress) {
@@ -204,6 +210,11 @@ function WithdrawSection({ profile }: { profile: any }) {
       if (!Number.isFinite(amt) || amt <= 0) {
         setMsg("Invalid amount");
         toast.error("Invalid amount");
+        return;
+      }
+      if (amt < MIN_WITHDRAW_OR_P2P_USDT) {
+        setMsg(`Minimum withdrawal is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
+        toast.error(`Minimum withdrawal is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
         return;
       }
       if (!/^0x[a-fA-F0-9]{40}$/.test(withdrawAddress)) {
@@ -248,52 +259,69 @@ function WithdrawSection({ profile }: { profile: any }) {
 
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-      <div className="text-lg font-semibold">Withdraw Funds</div>
-      <div className="mt-1 text-xs text-subtext">Send USDT (BEP20) to your address</div>
-      <div className="mt-4 grid gap-3 max-w-full lg:max-w-md">
-        <label className="grid gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-subtext">Withdraw Amount (USDT)</span>
-            <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
+      <div className="text-sm font-semibold">Withdraw Funds</div>
+      <div className="mt-1 text-xs text-subtext">Send USDT (BEP20) to your address · Minimum {MIN_WITHDRAW_OR_P2P_USDT} USDT</div>
+      <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground">
+        <span className="font-medium text-primary">Note:</span> A <span className="font-medium">{WITHDRAW_FEE_PERCENT}% fee</span> will be deducted from your withdrawal. The amount below is what you request from your wallet; you receive the net after the fee.
+      </div>
+      <div className="mx-auto mt-4 w-full max-w-md">
+        <div className="rounded-2xl bg-muted/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-ring sm:p-6">
+          <div className="grid gap-3">
+            <label className="grid gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-subtext">Withdraw Amount (USDT)</span>
+                <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
+              </div>
+              <input
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder={`${MIN_WITHDRAW_OR_P2P_USDT}`}
+                min={MIN_WITHDRAW_OR_P2P_USDT}
+                step="0.01"
+              />
+            </label>
+            {withdrawGrossPreview != null ? (
+              <div className="rounded-xl bg-background/80 px-3 py-2.5 text-xs leading-relaxed text-foreground ring-1 ring-ring">
+                You will receive{" "}
+                <span className="font-semibold text-primary">{toUSD(withdrawNetAfterFee(withdrawGrossPreview))}</span> after the{" "}
+                {WITHDRAW_FEE_PERCENT}% fee (deducted from {toUSD(withdrawGrossPreview)} requested).
+              </div>
+            ) : null}
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">USDT Address (BEP20)</span>
+              <input
+                value={withdrawAddress}
+                onChange={(e) => setWithdrawAddress(e.target.value.trim())}
+                readOnly={!!profile?.permanentWithdrawAddress}
+                className={`h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 ${profile?.permanentWithdrawAddress ? "cursor-not-allowed bg-muted opacity-80" : ""}`}
+                placeholder="0x..."
+              />
+              {profile?.permanentWithdrawAddress && (
+                <span className="mt-1 px-1 text-[10px] text-green-500 font-medium italic">✓ Permanent withdrawal address applied</span>
+              )}
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">Security Code</span>
+              <input
+                type="password"
+                value={securityCode}
+                onChange={(e) => setSecurityCode(e.target.value.trim())}
+                className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Your Security Code"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={onWithdraw}
+              className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+            >
+              Withdraw
+            </button>
+            {msg ? <div className="rounded-2xl bg-background/80 p-3 text-xs text-subtext ring-1 ring-ring">{msg}</div> : null}
           </div>
-          <input
-            value={withdrawAmount}
-            onChange={(e) => setWithdrawAmount(e.target.value)}
-            className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-            placeholder="10"
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">USDT Address (BEP20)</span>
-          <input
-            value={withdrawAddress}
-            onChange={(e) => setWithdrawAddress(e.target.value.trim())}
-            readOnly={!!profile?.permanentWithdrawAddress}
-            className={`h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 ${profile?.permanentWithdrawAddress ? "cursor-not-allowed bg-muted opacity-80" : ""}`}
-            placeholder="0x..."
-          />
-          {profile?.permanentWithdrawAddress && (
-            <span className="mt-1 px-1 text-[10px] text-green-500 font-medium italic">✓ Permanent withdrawal address applied</span>
-          )}
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">Security Code</span>
-          <input
-            type="password"
-            value={securityCode}
-            onChange={(e) => setSecurityCode(e.target.value.trim())}
-            className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-            placeholder="Your Security Code"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={onWithdraw}
-          className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
-        >
-          Withdraw
-        </button>
-        {msg ? <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{msg}</div> : null}
+        </div>
       </div>
     </div>
   );
@@ -449,7 +477,6 @@ function MyProfileSection({
       setUiMessage(successMsg);
       toast.success(successMsg);
       setProfileData(prev => ({ ...prev, currentPassword: "", newPassword: "", confirmPassword: "" }));
-      setIsEditingProfile(false);
       setIsUpdatingProfile(false);
       // Refresh full dashboard data
       try {
@@ -997,7 +1024,7 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
       {maxDepth > 7 ? (
         <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
           <div className="text-xs text-subtext">
-            Showing {nodes.length} team members across {maxDepth + 1} levels
+            Showing {nodes.filter((n) => Number(n.depth) > 0).length} team members across {maxDepth + 1} levels
           </div>
         </div>
       ) : null}
@@ -1023,9 +1050,39 @@ function StatCard({
   );
 }
 
+const IMPERSONATION_STORAGE_KEY = "user_impersonation_token";
+
 export default function UserDashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  /** Admin "view as user" new tab: Bearer token in sessionStorage + fetch patch — does not replace session cookie. */
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const imp = params.get("imp");
+    if (imp) {
+      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, imp);
+      window.history.replaceState({}, "", window.location.pathname || "/dashboard");
+    }
+    const token = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (!token) return;
+    const orig = window.fetch.bind(window);
+    window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+      let url = "";
+      if (typeof input === "string") url = input;
+      else if (input instanceof URL) url = input.href;
+      else url = (input as Request).url;
+      if (url.startsWith("/api/")) {
+        const h = new Headers(init?.headers);
+        if (!h.has("Authorization")) h.set("Authorization", `Bearer ${token}`);
+        return orig(input, { ...init, headers: h });
+      }
+      return orig(input, init);
+    };
+    return () => {
+      window.fetch = orig;
+    };
+  }, []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<"home" | "network" | "wallet" | "settings" | "income" | "activation">("home");
@@ -1091,13 +1148,18 @@ export default function UserDashboardPage() {
   const [p2pSecurityCode, setP2pSecurityCode] = useState("");
   const [p2pMsg, setP2pMsg] = useState("");
   const [p2pItems, setP2pItems] = useState<any[]>([]);
+  const [p2pConfirmOpen, setP2pConfirmOpen] = useState(false);
+  const [p2pConfirmName, setP2pConfirmName] = useState("");
+  const [p2pConfirmEmail, setP2pConfirmEmail] = useState("");
+  const [p2pConfirmAmount, setP2pConfirmAmount] = useState<number | null>(null);
+  const [p2pShowSecurity, setP2pShowSecurity] = useState(false);
   const [commissions, setCommissions] = useState<any[]>([]);
   const [commissionsLoading, setCommissionsLoading] = useState(false);
 
   const [internalTransferAmount, setInternalTransferAmount] = useState("");
   const [internalTransferMsg, setInternalTransferMsg] = useState("");
-  const [transferSource, setTransferSource] = useState<"main" | "withdraw">("main");
-  const [transferTarget, setTransferTarget] = useState<"withdraw" | "usdt">("withdraw");
+  const [transferSource, setTransferSource] = useState<"usdt" | "withdraw">("withdraw");
+  const [transferTarget, setTransferTarget] = useState<"withdraw" | "usdt">("usdt");
 
   const onInternalTransfer = async () => {
     setInternalTransferMsg("");
@@ -1158,9 +1220,44 @@ export default function UserDashboardPage() {
         toast.error("Invalid amount");
         return;
       }
+      if (amt < MIN_WITHDRAW_OR_P2P_USDT) {
+        setP2pMsg(`Minimum transfer is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
+        toast.error(`Minimum transfer is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
+        return;
+      }
       if (!p2pRecipient.trim()) {
         setP2pMsg("Recipient is required");
         toast.error("Recipient is required");
+        return;
+      }
+      const previewRes = await fetch("/api/user/p2p-transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient: p2pRecipient.trim(), amount: amt, preview: true }),
+      });
+      const previewData = await previewRes.json();
+      if (!previewRes.ok) {
+        setP2pMsg(typeof previewData?.error === "string" ? previewData.error : "Transfer validation failed");
+        toast.error(typeof previewData?.error === "string" ? previewData.error : "Transfer validation failed");
+        return;
+      }
+      setP2pConfirmName(String(previewData?.recipient?.username || ""));
+      setP2pConfirmEmail(String(previewData?.recipient?.email || ""));
+      setP2pConfirmAmount(amt);
+      setP2pConfirmOpen(true);
+    } catch {
+      setP2pMsg("Transfer validation failed");
+      toast.error("Transfer validation failed");
+    }
+  };
+
+  const confirmP2PTransfer = async () => {
+    setP2pMsg("");
+    try {
+      const amt = Number(p2pAmount);
+      if (!Number.isFinite(amt) || amt < MIN_WITHDRAW_OR_P2P_USDT) {
+        setP2pMsg(`Minimum transfer is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
+        toast.error(`Minimum transfer is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
         return;
       }
       if (!p2pSecurityCode.trim()) {
@@ -1179,6 +1276,7 @@ export default function UserDashboardPage() {
         toast.error(typeof data?.error === "string" ? data.error : "Transfer failed");
         return;
       }
+      setP2pConfirmOpen(false);
       toast.success("Transfer successful");
       setP2pRecipient("");
       setP2pAmount("");
@@ -1425,6 +1523,12 @@ export default function UserDashboardPage() {
     return rows;
   }, [refStats]);
 
+  /** my-team API includes self at depth 0; counts should match referral-stats (downline only). */
+  const teamDownlineCount = useMemo(
+    () => (teamNodes ? teamNodes.filter((n: any) => Number(n.depth) > 0).length : 0),
+    [teamNodes],
+  );
+
   const activeRow = networkRows[level - 1] ?? { level, count: 0 };
   const initials = useMemo(() => {
     const name = profile?.username ?? "";
@@ -1486,11 +1590,11 @@ export default function UserDashboardPage() {
                 <div className="flex items-center justify-end gap-2">
                   <div className="max-w-[120px] truncate text-sm font-medium sm:max-w-[180px]">{profile?.username ?? "User"}</div>
                   {referralGate?.state === "unverified" ? (
-                    <span className="hidden xs:inline-block rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                    <span className="inline-block rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-red-600/20">
                       UNVERIFIED {gateTime}
                     </span>
                   ) : referralGate?.state === "verified" ? (
-                    <span className="hidden xs:inline-block rounded-full bg-green-600 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                    <span className="inline-block rounded-full bg-green-600 px-2.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-green-600/20">
                       VERIFIED
                     </span>
                   ) : null}
@@ -1530,27 +1634,6 @@ export default function UserDashboardPage() {
             )}
           </div>
         </div>
-
-        {referralGate?.state === "unverified" ? (
-          <div className="mt-4 rounded-2xl bg-red-500/15 p-4 ring-1 ring-red-500/25">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white">UNVERIFIED</span>
-                <span className="text-sm text-subtext">Deposit within 24 hours to verify your account</span>
-              </div>
-              <div className="text-sm font-semibold text-red-200">{gateTime}</div>
-            </div>
-          </div>
-        ) : referralGate?.state === "verified" ? (
-          <div className="mt-4 rounded-2xl bg-green-500/15 p-4 ring-1 ring-green-500/25">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white">VERIFIED</span>
-                <span className="text-sm text-subtext">Your referral verification is complete</span>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         <div className={`mt-6 grid gap-6 w-full max-w-full overflow-hidden ${sidebarCollapsed ? "lg:grid-cols-[1fr]" : "lg:grid-cols-[260px_1fr]"}`}>
           {!sidebarCollapsed && (
@@ -1618,7 +1701,7 @@ export default function UserDashboardPage() {
                         { key: "withdraw", label: "Withdraw Funds" },
                         { key: "withdrawHistory", label: "Withdrawal History" },
                         { key: "p2pTransfer", label: "P2P Fund Transfer" },
-                        { key: "internalTransfer", label: "Transfer to Withdraw Wallet" },
+                        { key: "internalTransfer", label: "Transfer Between Accounts" },
                         { key: "p2pHistory", label: "P2P History" },
                       ].map((i) => (
                         <button
@@ -1849,15 +1932,14 @@ export default function UserDashboardPage() {
                   </div>
 
                   <div className="mt-6 grid gap-3 grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  <StatCard label="Main wallet" value={toUSD(Number(profile?.balance ?? 0))} />
                   <StatCard label="Withdraw Wallet" value={toUSD(Number(profile?.withdrawBalance ?? 0))} />
-                  <StatCard label="USDT Wallet" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
+                  <StatCard label="USDT Wallet (Main)" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
                   <StatCard label="Total Income" value={toUSD(totalIncomeAllTime)} />
                   <StatCard label="Daily Income" value={toUSD(todayEarnings)} />
                   <StatCard label="Total Team" value={String(refStats?.total ?? 0)} />
                   <StatCard label="Total Deposit" value={toUSD(totals.deposits)} />
                   <StatCard label="Total Withdraw" value={toUSD(totals.withdrawals)} />
-                   <StatCard label="Level" value={`L${currentLevel}`} />
+                   <StatCard label="Level Completed" value={`L${currentLevel}`} />
                     </div>
                 </div>
 
@@ -1888,7 +1970,7 @@ export default function UserDashboardPage() {
                     <div className="hidden lg:block rounded-2xl bg-card p-5 ring-1 ring-ring">
                       <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="text-sm font-semibold">My Team Tree</div>
-                        <div className="text-xs text-subtext">{teamNodes.length} members</div>
+                        <div className="text-xs text-subtext">{teamDownlineCount} members</div>
                       </div>
                       <div className="mt-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-2">
                         <div className="min-w-max">
@@ -1900,11 +1982,14 @@ export default function UserDashboardPage() {
                     <div className="rounded-2xl bg-card p-5 ring-1 ring-ring overflow-hidden max-w-full shadow-[0_0_15px_rgba(1,163,151,0.15)] transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-semibold">My Team List</div>
-                        <div className="text-xs text-subtext">{teamNodes.length} members</div>
+                        <div className="text-xs text-subtext">{teamDownlineCount} members</div>
                       </div>
                       <div className="mt-4 max-h-[260px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                         <div className="divide-y divide-[color:var(--ring)]">
-                          {teamNodes.slice(0, 40).map((n: any) => (
+                          {teamNodes
+                            .filter((n: any) => Number(n.depth) > 0)
+                            .slice(0, 40)
+                            .map((n: any) => (
                             <div key={n.id} className="flex min-w-0 flex-col justify-between gap-1 px-4 py-3 text-sm xs:flex-row xs:items-center xs:gap-3">
                               <div className="min-w-0 truncate">
                                 <div className="truncate font-medium text-foreground">{n.email === COMPANY_ADMIN_EMAIL ? "Admin" : n.username}</div>
@@ -1933,12 +2018,12 @@ export default function UserDashboardPage() {
                       Expand a level to see user IDs. Showing up to L{maxLevel}.
                     </div>
                   </div>
-                  <div className="text-xs text-subtext">{teamNodes.length} members</div>
+                  <div className="text-xs text-subtext">{teamDownlineCount} members</div>
                 </div>
                 <div className="mt-6">
-                  {Array.from({ length: maxLevel + 1 }, (_, i) => i).map((lvl) => {
+                  {Array.from({ length: maxLevel }, (_, i) => i + 1).map((lvl) => {
                     const members = teamNodes.filter((n: any) => Number(n.depth) === lvl);
-                    const count = lvl === 0 ? 1 : (refStats?.levels?.[String(lvl)] ?? members.length);
+                    const count = refStats?.levels?.[String(lvl)] ?? members.length;
                     const open = openLevels.includes(lvl);
                     return (
                       <div key={lvl} className="mb-3 rounded-2xl bg-muted ring-1 ring-ring">
@@ -2088,50 +2173,108 @@ export default function UserDashboardPage() {
             {active === "wallet" && walletTab === "p2pTransfer" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">P2P Fund Transfer</div>
-                <div className="mt-1 text-xs text-subtext">Transfer USDT between members</div>
-                <div className="mt-4 grid gap-3 sm:max-w-md">
-                  <label className="grid gap-1">
-                    <span className="text-xs text-subtext">Recipient (Email / Referrer Code / Username)</span>
-                    <input
-                      value={p2pRecipient}
-                      onChange={(e) => setP2pRecipient(e.target.value)}
-                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="user@example.com or ABC123"
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-subtext">Amount (USDT)</span>
-                      <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.usdtBalance ?? 0))}</span>
-                    </div>
-                    <input
-                      value={p2pAmount}
-                      onChange={(e) => setP2pAmount(e.target.value)}
-                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="10"
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-xs text-subtext">Security Code</span>
-                    <input
-                      type="password"
-                      value={p2pSecurityCode}
-                      onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
-                      className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="Your Security Code"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={onP2PTransfer}
-                    className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
-                  >
-                    Send
-                  </button>
-                  {p2pMsg ? (
-                    <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{p2pMsg}</div>
-                  ) : null}
+                <div className="mt-1 text-xs text-subtext">Transfer USDT between members · Minimum {MIN_WITHDRAW_OR_P2P_USDT} USDT</div>
+                <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground">
+                  <span className="font-medium text-primary">Note:</span> A <span className="font-medium">10% fee</span> will apply on P2P transfers. For a limited time, this fee is <span className="font-medium">waived (free)</span>.
                 </div>
+                <div className="mx-auto mt-4 w-full max-w-md">
+                  <div className="rounded-2xl bg-muted/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-ring sm:p-6">
+                    <div className="grid gap-3">
+                      <label className="grid gap-1">
+                        <span className="text-xs text-subtext">Recipient (Email / Referrer Code / Username)</span>
+                        <input
+                          value={p2pRecipient}
+                          onChange={(e) => setP2pRecipient(e.target.value)}
+                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                          placeholder="user@example.com or ABC123"
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-subtext">Amount (USDT)</span>
+                          <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.usdtBalance ?? 0))}</span>
+                        </div>
+                        <input
+                          type="number"
+                          value={p2pAmount}
+                          onChange={(e) => setP2pAmount(e.target.value)}
+                          className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                          placeholder={`${MIN_WITHDRAW_OR_P2P_USDT}`}
+                          min={MIN_WITHDRAW_OR_P2P_USDT}
+                          step="0.01"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={onP2PTransfer}
+                        className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                      >
+                        Send
+                      </button>
+                      {p2pMsg ? (
+                        <div className="rounded-2xl bg-background/80 p-3 text-xs text-subtext ring-1 ring-ring">{p2pMsg}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                {p2pConfirmOpen ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                      <div className="w-full max-w-sm rounded-2xl bg-card p-5 ring-1 ring-ring">
+                        <div className="text-sm font-semibold">Confirm Transfer</div>
+                        <div className="mt-2 text-xs text-subtext">Please confirm the details before sending.</div>
+                        <div className="mt-4 grid gap-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-subtext">Recipient</span>
+                            <span className="font-medium text-foreground truncate max-w-[60%] text-right">{p2pConfirmName || "-"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-subtext">Email</span>
+                            <span className="font-medium text-foreground truncate max-w-[60%] text-right">{p2pConfirmEmail || "-"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-subtext">Amount</span>
+                            <span className="font-bold text-foreground">{Number(p2pConfirmAmount ?? 0).toFixed(2)} USDT</span>
+                          </div>
+                          <label className="grid gap-1 mt-2">
+                            <span className="text-xs text-subtext">Security Code</span>
+                            <div className="relative">
+                              <input
+                                type={p2pShowSecurity ? "text" : "password"}
+                                value={p2pSecurityCode}
+                                onChange={(e) => setP2pSecurityCode(e.target.value.trim())}
+                                className="h-10 w-full rounded-2xl bg-background pr-12 pl-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                                placeholder="Your Security Code"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setP2pShowSecurity(v => !v)}
+                                className="absolute inset-y-0 right-0 flex items-center px-4 text-subtext"
+                                aria-label={p2pShowSecurity ? "Hide security code" : "Show security code"}
+                              >
+                                {p2pShowSecurity ? <FaEyeSlash /> : <FaEye />}
+                              </button>
+                            </div>
+                          </label>
+                        </div>
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setP2pConfirmOpen(false)}
+                            className="h-10 rounded-2xl bg-muted text-sm font-medium ring-1 ring-ring transition hover:bg-secondary"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={confirmP2PTransfer}
+                            className="h-10 rounded-2xl bg-primary text-sm font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
+                          >
+                            Confirm & Send
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                ) : null}
               </div>
             )}
             {active === "wallet" && walletTab === "internalTransfer" && (
@@ -2146,7 +2289,6 @@ export default function UserDashboardPage() {
                       value={transferSource}
                       onChange={(e) => setTransferSource(e.target.value as typeof transferSource)}
                     >
-                      <option value="main">Main Balance ({toUSD(Number(profile?.balance ?? 0))})</option>
                       <option value="withdraw">Withdraw Wallet ({toUSD(Number(profile?.withdrawBalance ?? 0))})</option>
                     </select>
                   </div>
@@ -2158,8 +2300,7 @@ export default function UserDashboardPage() {
                       value={transferTarget}
                       onChange={(e) => setTransferTarget(e.target.value as typeof transferTarget)}
                     >
-                      <option value="withdraw">Withdraw Wallet ({toUSD(Number(profile?.withdrawBalance ?? 0))})</option>
-                      <option value="usdt">USDT Wallet (P2P) ({toUSD(Number(profile?.usdtBalance ?? 0))})</option>
+                      <option value="usdt">USDT Wallet (Main) ({toUSD(Number((profile as any)?.usdtBalance ?? 0))})</option>
                     </select>
                   </div>
 
@@ -2376,7 +2517,7 @@ export default function UserDashboardPage() {
                     )}
                   </div>
                   <div className="mt-3 text-center text-[10px] text-subtext italic">
-                    Note: $10 will be deducted from your main balance
+                    Note: $10 is taken from your Main balance first, then from your USDT wallet (Main + USDT must total at least $10).
                   </div>
                 </div>
               </div>
@@ -2576,7 +2717,7 @@ export default function UserDashboardPage() {
                         { key: "withdraw", label: "Withdraw Funds" },
                         { key: "withdrawHistory", label: "Withdrawal History" },
                         { key: "p2pTransfer", label: "P2P Fund Transfer" },
-                        { key: "internalTransfer", label: "Transfer to Withdraw Wallet" },
+                        { key: "internalTransfer", label: "Transfer Between Accounts" },
                         { key: "p2pHistory", label: "P2P History" },
                       ].map((sub) => (
                         <button

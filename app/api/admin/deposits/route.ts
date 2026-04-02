@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { requireAdminSection } from "@/lib/admin-api-guard";
 
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.status !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const gate = await requireAdminSection("deposits");
+    if (!gate.ok) return gate.response;
     const url = new URL(req.url);
     const status = url.searchParams.get("status") || "";
     const valid = ["pending", "confirmed", "rejected"];

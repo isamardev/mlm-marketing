@@ -8,6 +8,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model AdminRole {
+  id          String   @id @default(cuid())
+  name        String
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
 model User {
   id                 String          @id @default(cuid())
   username           String
@@ -25,6 +34,8 @@ model User {
   updatedAt          DateTime        @updatedAt
   securityCode       String?
   withdrawBalance    Decimal?        @default(0) @db.Decimal(18, 2)
+  adminRoleId        String?
+  adminRole          AdminRole?      @relation(fields: [adminRoleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   deposits           Deposit[]
   notifications      Notification[]
   otps               Otp[]
@@ -36,6 +47,7 @@ model User {
   withdrawals        Withdrawal[]
 
   @@index([referredById])
+  @@index([adminRoleId])
 }
 
 model Transaction {
@@ -53,6 +65,14 @@ model Transaction {
   @@index([userId])
   @@index([sourceUserId])
   @@index([type])
+}
+
+// Singleton row id default: split of 10% withdrawal fee (not MLM admin commission)
+model PlatformFund {
+  id           String   @id @default("default")
+  charityTotal Decimal  @default(0) @db.Decimal(18, 2)
+  feePoolTotal Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt    DateTime @updatedAt
 }
 
 model Setting {
@@ -135,6 +155,11 @@ model Withdrawal {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   user      User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Net payout in `amount`; optional breakdown for admin Payment History (fee split)
+  grossRequested Decimal? @db.Decimal(18, 2)
+  feeAmount      Decimal? @db.Decimal(18, 2)
+  charityAmount  Decimal? @db.Decimal(18, 2)
+  feePoolAmount  Decimal? @db.Decimal(18, 2)
 
   @@index([userId, status])
 }

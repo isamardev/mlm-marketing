@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
+
+const ADMIN_WALLET_USERS_POLL_MS = 8_000;
 
 export default function AdminDashboardPage() {
   const { data: session, status } = useSession();
@@ -11,24 +13,43 @@ export default function AdminDashboardPage() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const isAdmin = status === "authenticated" && session?.user?.status === "admin";
 
+  const fetchWalletUsers = useCallback(async (silent = false) => {
+    if (!isAdmin) return;
+    try {
+      if (!silent) setLoadingUsers(true);
+      const res = await fetch("/api/admin-wallet/users", { cache: "no-store" });
+      if (!res.ok) {
+        setUsers([]);
+        return;
+      }
+      const json = await res.json();
+      setUsers(json.users || []);
+    } finally {
+      if (!silent) setLoadingUsers(false);
+    }
+  }, [isAdmin]);
+
   useEffect(() => {
     if (!isAdmin) return;
-    const run = async () => {
-      try {
-        setLoadingUsers(true);
-        const res = await fetch("/api/admin-wallet/users", { cache: "no-store" });
-        if (!res.ok) {
-          setUsers([]);
-          return;
-        }
-        const json = await res.json();
-        setUsers(json.users || []);
-      } finally {
-        setLoadingUsers(false);
-      }
+    fetchWalletUsers(false).catch(() => undefined);
+  }, [fetchWalletUsers, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetchWalletUsers(true).catch(() => undefined);
     };
-    run();
-  }, [isAdmin]);
+    const id = window.setInterval(tick, ADMIN_WALLET_USERS_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [fetchWalletUsers, isAdmin]);
 
   if (!isAdmin) {
     return (

@@ -8,7 +8,6 @@ import { toast } from "react-toastify";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
 const COUNTRIES = [
-  { name: "Pakistan", code: "+92" },
   { name: "Afghanistan", code: "+93" },
   { name: "Albania", code: "+355" },
   { name: "Algeria", code: "+213" },
@@ -137,6 +136,7 @@ const COUNTRIES = [
   { name: "North Macedonia", code: "+389" },
   { name: "Norway", code: "+47" },
   { name: "Oman", code: "+968" },
+  { name: "Pakistan", code: "+92" },
   { name: "Palau", code: "+680" },
   { name: "Panama", code: "+507" },
   { name: "Papua New Guinea", code: "+675" },
@@ -220,7 +220,8 @@ function HomeContent() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [toastMessage, setToastMessage] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("");
+  const [nationalNumber, setNationalNumber] = useState("");
   const [country, setCountry] = useState("");
   const [email, setEmail] = useState("");
   const [referrerCode, setReferrerCode] = useState("");
@@ -883,7 +884,7 @@ function HomeContent() {
                       if (!fullName.trim()) { setAuthMessage("Full name is required"); return; }
                       if (!email.trim()) { setAuthMessage("Email address is required"); return; }
                       if (!country.trim()) { setAuthMessage("Please select a country"); return; }
-                      if (!phone.trim()) { setAuthMessage("Mobile number is required"); return; }
+                      if (!nationalNumber.trim()) { setAuthMessage("Mobile number is required"); return; }
                       if (!password.trim()) { setAuthMessage("Password is required"); return; }
                       if (!confirmPassword.trim()) { setAuthMessage("Please confirm your password"); return; }
 
@@ -899,12 +900,13 @@ function HomeContent() {
                         setAuthMessage("Please enter a valid referral code");
                         return;
                       }
-                      const res = await fetch("/api/auth/register", {
+                      const phoneFull = `${countryCode} ${nationalNumber}`.trim();
+                      const regRes = await fetch("/api/auth/register", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           fullName,
-                          phone,
+                          phone: phoneFull,
                           country,
                           email,
                           password,
@@ -912,9 +914,9 @@ function HomeContent() {
                           acceptedTerms,
                         }),
                       });
-                      const data = (await res.json()) as any;
-                      if (!res.ok) {
-                        setAuthMessage(typeof data?.error === "string" ? data.error : "Signup failed");
+                      const regData = (await regRes.json()) as any;
+                      if (!regRes.ok) {
+                        setAuthMessage(typeof regData?.error === "string" ? regData.error : "Signup failed");
                         return;
                       }
                       const otpRes = await fetch("/api/user/request-otp", {
@@ -923,16 +925,16 @@ function HomeContent() {
                         body: JSON.stringify({ email, purpose: "registration" }),
                       });
                       const otpData = (await otpRes.json()) as any;
+                      if (!otpRes.ok) {
+                        setAuthMessage(typeof otpData?.error === "string" ? otpData.error : "Failed to send OTP");
+                        return;
+                      }
                       setSignupStep("otp");
-                      setAuthMessage("OTP sent to your email. Please enter the code.");
+                      setAuthMessage("OTP sent to your email. Please enter the code to complete signup.");
                       return;
                     }
 
-                    if (!otpCode.trim()) {
-                      setAuthMessage("Please enter the OTP code");
-                      return;
-                    }
-
+                    if (!otpCode.trim()) { setAuthMessage("OTP is required"); setAuthLoading(false); return; }
                     const verifyRes = await fetch("/api/user/verify-otp", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -1021,7 +1023,7 @@ function HomeContent() {
                           const selectedCountry = e.target.value;
                           setCountry(selectedCountry);
                           const dialCode = COUNTRIES.find(c => c.name === selectedCountry)?.code || "";
-                          setPhone(dialCode);
+                          setCountryCode(dialCode);
                         }}
                         className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                       >
@@ -1035,18 +1037,20 @@ function HomeContent() {
                     </label>
                     <label className="grid gap-2">
                       <span className="text-sm font-medium text-foreground">Mobile Number</span>
-                      <input
-                        required
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => {
-                          const { value } = e.target;
-                          const filtered = value.replace(/[^0-9+\s]/g, "");
-                          setPhone(filtered);
-                        }}
-                        className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                        placeholder="+92 300 1234567"
-                      />
+                      <div className="flex h-11 w-full items-center rounded-2xl bg-background text-foreground ring-1 ring-ring focus-within:ring-2 focus-within:ring-primary/30">
+                        <span className="px-4 text-sm text-subtext">{countryCode || "+--"}</span>
+                        <input
+                          required
+                          type="tel"
+                          value={nationalNumber}
+                          onChange={(e) => {
+                            const filtered = e.target.value.replace(/[^0-9\s]/g, "");
+                            setNationalNumber(filtered);
+                          }}
+                          className="flex-1 bg-transparent px-1 text-sm outline-none"
+                          placeholder="300 1234567"
+                        />
+                      </div>
                     </label>
                   </div>
                 </>

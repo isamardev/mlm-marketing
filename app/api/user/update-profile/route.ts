@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
+import { getUserApiContext } from "@/lib/user-api-auth";
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
 
     const { username } = await req.json();
 
@@ -17,7 +15,7 @@ export async function POST(req: Request) {
 
     const db = getDb();
     const user = await db.user.update({
-      where: { id: session.user.id },
+      where: { id: ctx.userId },
       data: { username: username.trim() }
     });
 

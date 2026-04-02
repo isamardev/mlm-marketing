@@ -3,12 +3,15 @@ import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { resolveAdminPermissionsForUser } from "@/lib/admin-permissions";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).optional(),
   isImpersonation: z.string().optional(),
   adminToken: z.string().optional(),
+  /** Set to "true" from `/role` login — required for users who have an assigned admin role. */
+  staffRoleLogin: z.string().optional(),
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -26,12 +29,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
         isImpersonation: { label: "isImpersonation", type: "text" },
         adminToken: { label: "adminToken", type: "text" },
+        staffRoleLogin: { label: "staffRoleLogin", type: "text" },
       },
       authorize: async (credentials) => {
     const parsed = credentialsSchema.safeParse(credentials);
     if (!parsed.success) return null;
 
-    const { email, password, isImpersonation, adminToken } = parsed.data;
+    const { email, password, isImpersonation, adminToken, staffRoleLogin } = parsed.data;
 
     const db = getDb();
 
@@ -69,6 +73,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     if (user.status === "blocked") return null;
 
+    if (user.adminRoleId && staffRoleLogin !== "true") {
+      return null;
+    }
+    if (staffRoleLogin === "true" && user.status !== "admin") {
+      return null;
+    }
+
     const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
     const status = adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;
 
@@ -86,6 +97,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.userId = user.id;
         token.status = (user as { status?: string }).status ?? "active";
+        token.email = (user as { email?: string | null }).email ?? token.email;
       }
       if (!user && token.userId && token.status !== "admin") {
         const db = getDb();
@@ -106,6 +118,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     session: async ({ session, token }) => {
       session.user.id = token.userId as string;
       session.user.status = (token.status as string) ?? "active";
+      const email = typeof token.email === "string" ? token.email : session.user.email;
+      const perms = await resolveAdminPermissionsForUser(
+        token.userId as string,
+        email,
+      );
+      session.user.adminFullAccess = perms.fullAccess;
+      session.user.adminAllowedSections = perms.sections;
       return session;
     },
   },

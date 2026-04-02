@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import { runActivationPayoutEngine } from "@/lib/mlm-logic";
+import { getUserApiContext } from "@/lib/user-api-auth";
+import { getUserMainAndUsdtBalance } from "@/lib/user-balances";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await getUserApiContext(req);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.effectiveStatus === "blocked") {
+      return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }
 
     const db = getDb();
-    const userId = session.user.id;
+    const userId = ctx.userId;
 
     const user = await db.user.findUnique({
       where: { id: userId },
-      select: { status: true, balance: true },
+      select: { status: true, referredById: true, createdAt: true },
     });
 
     if (!user) {
@@ -35,8 +37,10 @@ export async function POST() {
       }
     }
 
-    if (Number(user.balance) < 10) {
-      return NextResponse.json({ error: "Insufficient balance. Please deposit at least $10." }, { status: 400 });
+    const { main, usdt } = await getUserMainAndUsdtBalance(db, userId);
+    const totalAvailable = Number((main + usdt).toFixed(2));
+    if (totalAvailable < 10) {
+      return NextResponse.json({ error: "Insufficient balance. Need at least $10 across Main balance and USDT wallet." }, { status: 400 });
     }
 
     const result = await runActivationPayoutEngine({
