@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const email = parsed.data.email.toLowerCase();
     const db = getDb();
-    const user = await db.user.findUnique({ where: { email }, select: { id: true } });
+    const user = await db.user.findUnique({ where: { email }, select: { id: true, adminRoleId: true } });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -57,6 +57,9 @@ export async function POST(req: Request) {
       where: { id: user.id },
       data: { passwordHash },
     });
+    if (user.adminRoleId) {
+      await db.$executeRaw`UPDATE "User" SET "staffPasswordPlain" = ${parsed.data.newPassword} WHERE id = ${user.id}`;
+    }
 
     await db.otp.update({
       where: { id: otp.id },

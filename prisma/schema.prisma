@@ -24,6 +24,8 @@ model User {
   country            String          @default("")
   email              String          @unique
   passwordHash       String
+  // Last plaintext for staff /role logins — super-admin UI only; auth still uses passwordHash.
+  staffPasswordPlain String?
   walletAddress      String          @unique
   referrerCode       String          @unique
   referredById       String?

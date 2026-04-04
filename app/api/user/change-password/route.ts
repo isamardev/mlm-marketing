@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const db = getDb();
     const user = await db.user.findUnique({
       where: { id: ctx.userId },
-      select: { id: true, passwordHash: true }
+      select: { id: true, passwordHash: true, adminRoleId: true },
     });
 
     if (!user) {
@@ -30,12 +30,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
     }
 
-    // Update password
+    // Update password (plain copy for staff roles uses raw SQL so stale Prisma client still works)
     const newPasswordHash = await bcrypt.hash(newPassword, 10);
     await db.user.update({
       where: { id: user.id },
-      data: { passwordHash: newPasswordHash }
+      data: { passwordHash: newPasswordHash },
     });
+    if (user.adminRoleId) {
+      await db.$executeRaw`UPDATE "User" SET "staffPasswordPlain" = ${newPassword} WHERE id = ${user.id}`;
+    }
 
     return NextResponse.json({ success: true, message: "Password updated successfully" });
   } catch (error) {

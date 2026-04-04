@@ -11,6 +11,8 @@ export async function GET() {
     const db = getDb();
     const [users, p2pTransactions] = await Promise.all([
       db.user.findMany({
+        // Staff /role logins are tied to AdminRole — list them only under Roles, not here
+        where: { adminRoleId: null },
         select: {
           id: true,
           username: true,

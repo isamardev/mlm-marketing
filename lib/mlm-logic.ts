@@ -2,6 +2,12 @@ import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getUserMainAndUsdtBalance } from "@/lib/user-balances";
 
+/** Default interactive transaction timeout (~5s) expires mid-loop on long upline chains (e.g. L11+). */
+const INTERACTIVE_TX_OPTIONS = {
+  maxWait: 20_000,
+  timeout: 120_000,
+} as const;
+
 type PayoutResult = {
   level: number;
   beneficiaryUserId: string;
@@ -64,16 +70,22 @@ export async function runMlmPayoutEngine(params: {
 
     for (let level = 1; level <= 20; level += 1) {
       if (!currentParentId) break;
+      const parentUser = await tx.user.findUnique({
+        where: { id: currentParentId },
+        select: { id: true, referredById: true },
+      });
+      if (!parentUser) break;
+
       const pct = levelPercentages[level - 1] ?? 0;
       const amountNum = Number(((depositAmount * pct) / 100).toFixed(2));
       if (amountNum > 0) {
         await tx.user.update({
-          where: { id: currentParentId },
+          where: { id: parentUser.id },
           data: { withdrawBalance: { increment: new Prisma.Decimal(amountNum.toFixed(2)) } } as any,
         });
         await tx.notification.create({
           data: {
-            userId: currentParentId,
+            userId: parentUser.id,
             type: "commission",
             title: `L${level} Commission`,
             message: `You received ${amountNum} from ${sourceUserId}`,
@@ -81,7 +93,7 @@ export async function runMlmPayoutEngine(params: {
         });
         await tx.transaction.create({
           data: {
-            userId: currentParentId,
+            userId: parentUser.id,
             sourceUserId,
             level,
             amount: new Prisma.Decimal(amountNum.toFixed(2)),
@@ -89,16 +101,12 @@ export async function runMlmPayoutEngine(params: {
             note: `L${level} commission from ${sourceUserId}`,
           },
         });
-        payouts.push({ level, beneficiaryUserId: currentParentId, amount: amountNum });
+        payouts.push({ level, beneficiaryUserId: parentUser.id, amount: amountNum });
       }
 
-      const parent = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { referredById: true },
-      });
-      currentParentId = parent?.referredById ?? null;
+      currentParentId = parentUser.referredById ?? null;
     }
-  });
+  }, INTERACTIVE_TX_OPTIONS);
 
   return { sourceUserId, depositAmount, payouts };
 }
@@ -188,15 +196,19 @@ export async function runActivationPayoutEngine(params: {
     let remainingAmount = Number(activationAmount.toFixed(2));
 
     for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
-      const beneficiaryId = currentParentId;
+      const beneficiary = await tx.user.findUnique({
+        where: { id: currentParentId },
+        select: { id: true, referredById: true },
+      });
+      if (!beneficiary) break;
 
       await tx.user.update({
-        where: { id: beneficiaryId },
+        where: { id: beneficiary.id },
         data: { withdrawBalance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } } as any,
       });
       await tx.notification.create({
         data: {
-          userId: beneficiaryId,
+          userId: beneficiary.id,
           type: "commission",
           title: `L${level} Commission`,
           message: `You received ${perLevel.toFixed(2)} from ${user.username} activation`,
@@ -204,7 +216,7 @@ export async function runActivationPayoutEngine(params: {
       });
       await tx.transaction.create({
         data: {
-          userId: beneficiaryId,
+          userId: beneficiary.id,
           sourceUserId,
           level,
           amount: new Prisma.Decimal(perLevel.toFixed(2)),
@@ -212,14 +224,10 @@ export async function runActivationPayoutEngine(params: {
           note: `L${level} activation commission from ${sourceUserId}`,
         },
       });
-      payouts.push({ level, beneficiaryUserId: beneficiaryId, amount: perLevel });
+      payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
       remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
 
-      const parent = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { referredById: true },
-      });
-      currentParentId = parent?.referredById ?? null;
+      currentParentId = beneficiary.referredById ?? null;
     }
 
     if (remainingAmount > 0) {
@@ -246,7 +254,7 @@ export async function runActivationPayoutEngine(params: {
         },
       });
     }
-  });
+  }, INTERACTIVE_TX_OPTIONS);
 
   return { sourceUserId, activationAmount, payouts };
 }
@@ -301,15 +309,19 @@ export async function runFixedPayoutEngine(params: {
     let remainingAmount = Number(depositAmount.toFixed(2));
 
     for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
-      const beneficiaryId = currentParentId;
+      const beneficiary = await tx.user.findUnique({
+        where: { id: currentParentId },
+        select: { id: true, referredById: true },
+      });
+      if (!beneficiary) break;
 
       await tx.user.update({
-        where: { id: beneficiaryId },
+        where: { id: beneficiary.id },
         data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
       });
       await tx.notification.create({
         data: {
-          userId: beneficiaryId,
+          userId: beneficiary.id,
           type: "commission",
           title: `L${level} Commission`,
           message: `You received ${perLevel.toFixed(2)} from ${sourceUser.username}`,
@@ -317,7 +329,7 @@ export async function runFixedPayoutEngine(params: {
       });
       await tx.transaction.create({
         data: {
-          userId: beneficiaryId,
+          userId: beneficiary.id,
           sourceUserId,
           level,
           amount: new Prisma.Decimal(perLevel.toFixed(2)),
@@ -325,14 +337,10 @@ export async function runFixedPayoutEngine(params: {
           note: `L${level} fixed payout from ${sourceUserId}`,
         },
       });
-      payouts.push({ level, beneficiaryUserId: beneficiaryId, amount: perLevel });
+      payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
       remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
 
-      const parent = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { referredById: true },
-      });
-      currentParentId = parent?.referredById ?? null;
+      currentParentId = beneficiary.referredById ?? null;
     }
 
     if (remainingAmount > 0) {
@@ -359,7 +367,7 @@ export async function runFixedPayoutEngine(params: {
         },
       });
     }
-  });
+  }, INTERACTIVE_TX_OPTIONS);
 
   return { sourceUserId, depositAmount, payouts };
 }
