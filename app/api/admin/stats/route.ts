@@ -29,13 +29,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1. Total Users
-    let totalUsers = 0;
-    try {
-      totalUsers = await db.user.count();
-    } catch (e) { console.error("Stats API: totalUsers count failed", e); }
-
-    // 2. All Users Data (balance + withdraw + USDT wallet — matches user dashboard)
+    // 1–2. All users (for balances split + non-admin count for "Total Users" card — excludes admin status & ADMIN_EMAIL)
     let allUsers: any[] = [];
     try {
       allUsers = await db.$queryRawUnsafe<any[]>(
@@ -148,7 +142,7 @@ export async function GET() {
     const adminWalletSum = adminBalance + adminWithdraw + adminUsdt;
 
     const finalData = {
-      totalUsers,
+      totalUsers: nonAdminCount,
       nonAdminCount,
       totalDeposits,
       systemBalance: Number((allUserWalletSum + adminWalletSum).toFixed(2)),

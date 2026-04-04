@@ -356,12 +356,10 @@ export function AdminPanelClient() {
   const [withdrawSectionOpen, setWithdrawSectionOpen] = useState(false);
   const [withdrawHistoryItems, setWithdrawHistoryItems] = useState<any[]>([]);
   const [withdrawHistoryLoading, setWithdrawHistoryLoading] = useState(false);
-  const [withdrawHistoryError, setWithdrawHistoryError] = useState("");
   const [deposits, setDeposits] = useState<any[]>([]);
   const [depositStatus, setDepositStatus] = useState<string>("all");
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
   const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState("");
   const [editingUser, setEditingUser] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
     message: string;
@@ -568,27 +566,25 @@ export function AdminPanelClient() {
   }, []);
 
   const fetchAdminUsers = useCallback(async (silent = false) => {
-    if (!silent) {
-      setUsersLoading(true);
-      setUsersError("");
-    }
+    if (!silent) setUsersLoading(true);
     try {
       const res = await fetch("/api/admin/users", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         setUsers([]);
-        if (!silent) setUsersError(typeof data?.error === "string" ? data.error : "Failed to load users");
+        const msg = typeof data?.error === "string" ? data.error : `Users API failed (${res.status})`;
+        console.error("[admin users]", msg, data);
         return;
       }
       if (Array.isArray(data?.users)) {
         setUsers(data.users);
       } else {
         setUsers([]);
-        if (!silent) setUsersError("No users data found");
+        console.warn("[admin users] Unexpected response shape", data);
       }
-    } catch {
+    } catch (e) {
       setUsers([]);
-      if (!silent) setUsersError("Failed to load users");
+      console.error("[admin users] fetch failed", e);
     } finally {
       if (!silent) setUsersLoading(false);
     }
@@ -663,7 +659,6 @@ export function AdminPanelClient() {
       await Promise.all(jobs);
     } catch (err) {
       console.error("Admin data load error:", err);
-      setAdminUiMsg("Some admin data failed to load");
     }
   }, [
     depositStatus,
@@ -682,9 +677,13 @@ export function AdminPanelClient() {
         const res = await fetch(`/api/admin/payment-history?type=${paymentHistoryKind}`, { cache: "no-store" });
         const data = await res.json();
         if (res.ok && Array.isArray(data.items)) setPaymentHistoryItems(data.items);
-        else setPaymentHistoryItems([]);
-      } catch {
+        else {
+          setPaymentHistoryItems([]);
+          console.error("[admin payment history]", res.status, data);
+        }
+      } catch (e) {
         setPaymentHistoryItems([]);
+        console.error("[admin payment history] fetch failed", e);
       } finally {
         if (!silent) setPaymentHistoryLoading(false);
       }
@@ -695,19 +694,15 @@ export function AdminPanelClient() {
   const fetchWithdrawHistory = useCallback(
     async (silent = false) => {
       if (status !== "authenticated" || !session?.user?.id) return;
-      if (!silent) {
-        setWithdrawHistoryLoading(true);
-        setWithdrawHistoryError("");
-      }
+      if (!silent) setWithdrawHistoryLoading(true);
       try {
         const res = await fetch(`/api/admin/payment-history?type=withdrawals`, { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (res.ok && Array.isArray(data.items)) {
           setWithdrawHistoryItems(data.items);
-          setWithdrawHistoryError("");
         } else {
           setWithdrawHistoryItems([]);
-          const msg =
+          const detail =
             typeof data?.error === "string"
               ? data.error
               : res.status === 403
@@ -715,14 +710,11 @@ export function AdminPanelClient() {
                 : res.status >= 500
                   ? "Server error loading withdrawal history"
                   : "Could not load withdrawal history";
-          setWithdrawHistoryError(msg);
-          if (!silent) toast.error(msg);
+          console.error("[admin withdraw history]", res.status, detail, data);
         }
-      } catch {
+      } catch (e) {
         setWithdrawHistoryItems([]);
-        const msg = "Network error loading withdrawal history";
-        setWithdrawHistoryError(msg);
-        if (!silent) toast.error(msg);
+        console.error("[admin withdraw history] fetch failed", e);
       } finally {
         if (!silent) setWithdrawHistoryLoading(false);
       }
@@ -733,7 +725,7 @@ export function AdminPanelClient() {
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!session?.user?.id || session.user.status !== "admin") return;
-    fetchAdminDashboardData().catch(() => setAdminUiMsg("Failed to load admin data"));
+    fetchAdminDashboardData().catch((e) => console.error("fetchAdminDashboardData", e));
   }, [fetchAdminDashboardData, session?.user?.id, session?.user?.status, status]);
 
   useEffect(() => {
@@ -1092,9 +1084,6 @@ export function AdminPanelClient() {
                     </button>
                   </div>
                 </div>
-                {usersError ? (
-                  <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-red-500 ring-1 ring-ring">{usersError}</div>
-                ) : null}
                 <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar bg-card shadow-inner">
                   <div className="min-w-[900px]">
                     <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_1.15fr_0.65fr_1.5fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
@@ -1344,7 +1333,7 @@ export function AdminPanelClient() {
                             String(u.referrerCode ?? "").toLowerCase().includes(s)
                           );
                         }).length === 0 ? (
-                        <div className="px-4 py-6 text-center text-sm text-subtext">No users found</div>
+                        <div className="px-4 py-6 text-center text-sm text-subtext">No data yet</div>
                       ) : null}
                     </div>
                   </div>
@@ -1806,11 +1795,6 @@ export function AdminPanelClient() {
                     <div className="mt-1 text-sm text-subtext">
                       Pay by shows who approved or rejected. Staff only see withdrawals they processed; super admin sees all.
                     </div>
-                    {withdrawHistoryError ? (
-                      <div className="mt-2 rounded-2xl bg-red-500/10 px-4 py-2 text-sm text-red-600 ring-1 ring-red-500/20">
-                        {withdrawHistoryError}
-                      </div>
-                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -1861,7 +1845,7 @@ export function AdminPanelClient() {
                           </div>
                         ))}
                         {withdrawHistoryItems.length === 0 && (
-                          <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
+                          <div className="px-4 py-8 text-center text-sm text-subtext">No data yet</div>
                         )}
                       </div>
                     </div>
@@ -1996,7 +1980,7 @@ export function AdminPanelClient() {
                             </div>
                           ))}
                           {paymentHistoryItems.length === 0 && (
-                            <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
+                            <div className="px-4 py-8 text-center text-sm text-subtext">No data yet</div>
                           )}
                         </div>
                       </div>

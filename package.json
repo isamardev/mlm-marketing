@@ -8,6 +8,7 @@
     "dev:webpack": "next dev --webpack",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push --skip-generate",
+    "db:reset": "prisma migrate reset --force --skip-seed",
     "build": "npx prisma generate && next build",
     "postinstall": "npx prisma generate",
     "start": "next start",
