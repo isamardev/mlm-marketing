@@ -10,13 +10,12 @@ type NavItem = {
 };
 
 /** How often admin data refetches in the background while the tab is open (ms). */
-const ADMIN_POLL_MS = 8_000;
+const ADMIN_POLL_MS = 25_000;
 
-type PaymentHistoryKind = "deposits" | "withdrawals" | "commissions" | "charity" | "fee";
+type PaymentHistoryKind = "deposits" | "commissions" | "charity" | "fee";
 
 const PAYMENT_HISTORY_SUB: { key: PaymentHistoryKind; label: string }[] = [
   { key: "deposits", label: "Deposit history" },
-  { key: "withdrawals", label: "Withdrawal history" },
   { key: "commissions", label: "Admin commission history" },
   { key: "charity", label: "Charity history" },
   { key: "fee", label: "Fee history" },
@@ -24,7 +23,6 @@ const PAYMENT_HISTORY_SUB: { key: PaymentHistoryKind; label: string }[] = [
 
 const paymentHistoryKindLabel: Record<PaymentHistoryKind, string> = {
   deposits: "Deposit history",
-  withdrawals: "Withdrawal history",
   commissions: "Admin commission history",
   charity: "Charity history",
   fee: "Fee history",
@@ -36,7 +34,6 @@ const navItems: NavItem[] = [
   { key: "deposits", label: "Deposits" },
   { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
-  { key: "withdrawals", label: "Withdrawals" },
   { key: "roles", label: "Roles" },
 ];
 
@@ -50,7 +47,7 @@ const ROLE_CHECKBOX_OPTIONS: { key: string; label: string }[] = [
   { key: "payments", label: "Payment History" },
 ];
 
-type AdminNavKey = NavItem["key"] | "payments";
+type AdminNavKey = NavItem["key"] | "payments" | "withdrawPending" | "withdrawHistory";
 
 function ConfirmationModal({
   message,
@@ -92,6 +89,116 @@ function ConfirmationModal({
             className="rounded-full bg-primary py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90"
           >
             {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WithdrawApproveModal({
+  username,
+  email,
+  netAmount,
+  address,
+  txHash,
+  onTxHashChange,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  username: string;
+  email: string;
+  netAmount: string;
+  address: string;
+  txHash: string;
+  onTxHashChange: (v: string) => void;
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="Close"
+        className="absolute inset-0 bg-black/60 backdrop-blur-md transition-all duration-300"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="withdraw-approve-title"
+        className="relative w-full max-w-md overflow-hidden rounded-3xl bg-card p-6 shadow-2xl ring-1 ring-ring animate-in fade-in zoom-in duration-200"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+              <span className="text-lg">✓</span>
+            </div>
+            <h3 id="withdraw-approve-title" className="mt-3 text-lg font-semibold text-foreground">
+              Approve withdrawal
+            </h3>
+            <p className="mt-1 text-sm text-subtext">Enter the on-chain payout transaction hash (BSC USDT).</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full p-2 text-subtext transition hover:bg-muted hover:text-foreground"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-2xl bg-muted/50 p-4 text-sm ring-1 ring-ring/60">
+          <div className="grid gap-2">
+            <div className="flex justify-between gap-2">
+              <span className="text-subtext">User</span>
+              <span className="max-w-[60%] truncate text-right font-medium text-foreground">{username}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-subtext">Email</span>
+              <span className="max-w-[60%] truncate text-right text-xs text-foreground">{email}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-subtext">Net amount</span>
+              <span className="font-semibold text-primary">{netAmount} USDT</span>
+            </div>
+            <div className="border-t border-ring/40 pt-2">
+              <span className="text-xs text-subtext">Recipient address</span>
+              <div className="mt-1 break-all font-mono text-[11px] leading-relaxed text-foreground">{address}</div>
+            </div>
+          </div>
+        </div>
+
+        <label className="mt-5 grid gap-2">
+          <span className="text-sm font-medium text-foreground">Transaction hash</span>
+          <input
+            autoFocus
+            value={txHash}
+            onChange={(e) => onTxHashChange(e.target.value)}
+            placeholder="0x…"
+            className="h-11 w-full rounded-2xl bg-background px-4 font-mono text-sm text-foreground ring-1 ring-ring outline-none transition focus:ring-2 focus:ring-primary/35"
+          />
+        </label>
+
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-full bg-muted py-2.5 text-sm font-medium text-foreground transition hover:bg-muted/80 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading || !txHash.trim()}
+            className="rounded-full bg-primary py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90 disabled:opacity-50"
+          >
+            {loading ? "Saving…" : "Approve & save hash"}
           </button>
         </div>
       </div>
@@ -237,6 +344,19 @@ export function AdminPanelClient() {
   const [adminUiMsg, setAdminUiMsg] = useState("");
   const [pendingWithdrawals, setPendingWithdrawals] = useState<any[]>([]);
   const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [withdrawApproveModal, setWithdrawApproveModal] = useState<{
+    id: string;
+    username: string;
+    email: string;
+    amount: string;
+    address: string;
+  } | null>(null);
+  const [withdrawApproveHash, setWithdrawApproveHash] = useState("");
+  const [withdrawApproveLoading, setWithdrawApproveLoading] = useState(false);
+  const [withdrawSectionOpen, setWithdrawSectionOpen] = useState(false);
+  const [withdrawHistoryItems, setWithdrawHistoryItems] = useState<any[]>([]);
+  const [withdrawHistoryLoading, setWithdrawHistoryLoading] = useState(false);
+  const [withdrawHistoryError, setWithdrawHistoryError] = useState("");
   const [deposits, setDeposits] = useState<any[]>([]);
   const [depositStatus, setDepositStatus] = useState<string>("all");
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
@@ -287,6 +407,10 @@ export function AdminPanelClient() {
   const [showEditStaffPassword, setShowEditStaffPassword] = useState(false);
   const [adminRolesForSelect, setAdminRolesForSelect] = useState<{ id: string; name: string }[]>([]);
 
+  useEffect(() => {
+    if (userStatusFilter === "admin") setUserStatusFilter("all");
+  }, [userStatusFilter]);
+
   const adminFullAccess = session?.user?.adminFullAccess === true;
   const adminAllowedSections = session?.user?.adminAllowedSections ?? [];
   const canAdminSection = useCallback(
@@ -306,13 +430,25 @@ export function AdminPanelClient() {
       "deposits",
       "payouts",
       "settings",
-      "withdrawals",
+      "withdrawPending",
       "payments",
       "roles",
     ];
-    const hit = order.find((k) => canAdminSection(k));
+    const hit = order.find((k) => {
+      if (k === "withdrawPending") return canAdminSection("withdrawals");
+      if (k === "withdrawHistory")
+        return canAdminSection("withdrawals") || canAdminSection("payments");
+      if (k === "payments") return canAdminSection("payments");
+      return canAdminSection(k);
+    });
     return hit;
   }, [canAdminSection]);
+
+  useEffect(() => {
+    if (active === "withdrawPending" || active === "withdrawHistory") {
+      setWithdrawSectionOpen(true);
+    }
+  }, [active]);
 
   useEffect(() => {
     if (status !== "authenticated" || session?.user?.status !== "admin") return;
@@ -322,6 +458,15 @@ export function AdminPanelClient() {
       if (!can("payments")) {
         if (firstAllowedTab) setActive(firstAllowedTab);
         setPaymentHistoryOpen(false);
+      }
+      return;
+    }
+    if (active === "withdrawPending" || active === "withdrawHistory") {
+      const okWithdrawTab =
+        active === "withdrawPending" ? can("withdrawals") : can("withdrawals") || can("payments");
+      if (!okWithdrawTab) {
+        if (firstAllowedTab) setActive(firstAllowedTab);
+        setWithdrawSectionOpen(false);
       }
       return;
     }
@@ -413,6 +558,7 @@ export function AdminPanelClient() {
     setActive("payments");
     setPaymentHistoryKind(kind);
     setPaymentHistoryOpen(true);
+    setWithdrawSectionOpen(false);
     setMobileNavOpen(false);
   }, []);
 
@@ -454,48 +600,67 @@ export function AdminPanelClient() {
     const sections = session.user.adminAllowedSections ?? [];
     const can = (s: string) => full || sections.includes(s);
     try {
+      const jobs: Promise<void>[] = [];
+
       if (can("overview")) {
-        const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
-        if (statsRes.ok) {
-          const s = await statsRes.json();
-          if (typeof s?.totalUsers === "number") setStats(s);
-        } else {
-          console.error("Stats API failed:", await statsRes.text());
-        }
+        jobs.push(
+          (async () => {
+            const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
+            if (statsRes.ok) {
+              const s = await statsRes.json();
+              if (typeof s?.totalUsers === "number") setStats(s);
+            } else {
+              console.error("Stats API failed:", await statsRes.text());
+            }
+          })(),
+          (async () => {
+            const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
+            if (treeRes.ok) {
+              const t = await treeRes.json();
+              if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
+            }
+          })(),
+        );
       }
 
       if (can("settings")) {
-        const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
-        if (settingsRes.ok) {
-          const l = await settingsRes.json();
-          if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
-        }
-      }
-
-      if (can("overview")) {
-        const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
-        if (treeRes.ok) {
-          const t = await treeRes.json();
-          if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
-        }
+        jobs.push(
+          (async () => {
+            const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
+            if (settingsRes.ok) {
+              const l = await settingsRes.json();
+              if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
+            }
+          })(),
+        );
       }
 
       if (can("withdrawals")) {
-        const withdrawalsRes = await fetch("/api/admin/withdrawals", { cache: "no-store" });
-        if (withdrawalsRes.ok) {
-          const data = await withdrawalsRes.json();
-          setPendingWithdrawals(data.items || []);
-        }
+        jobs.push(
+          (async () => {
+            const withdrawalsRes = await fetch("/api/admin/withdrawals", { cache: "no-store" });
+            if (withdrawalsRes.ok) {
+              const data = await withdrawalsRes.json();
+              setPendingWithdrawals(data.items || []);
+            }
+          })(),
+        );
       }
 
       if (can("deposits")) {
-        const depositsQ = depositStatus === "all" ? "" : `?status=${encodeURIComponent(depositStatus)}`;
-        const depositsRes = await fetch(`/api/admin/deposits${depositsQ}`, { cache: "no-store" });
-        if (depositsRes.ok) {
-          const data = await depositsRes.json();
-          setDeposits(data.items || []);
-        }
+        jobs.push(
+          (async () => {
+            const depositsQ = depositStatus === "all" ? "" : `?status=${encodeURIComponent(depositStatus)}`;
+            const depositsRes = await fetch(`/api/admin/deposits${depositsQ}`, { cache: "no-store" });
+            if (depositsRes.ok) {
+              const data = await depositsRes.json();
+              setDeposits(data.items || []);
+            }
+          })(),
+        );
       }
+
+      await Promise.all(jobs);
     } catch (err) {
       console.error("Admin data load error:", err);
       setAdminUiMsg("Some admin data failed to load");
@@ -527,6 +692,44 @@ export function AdminPanelClient() {
     [paymentHistoryKind, session?.user?.id, session?.user?.status, status],
   );
 
+  const fetchWithdrawHistory = useCallback(
+    async (silent = false) => {
+      if (status !== "authenticated" || !session?.user?.id) return;
+      if (!silent) {
+        setWithdrawHistoryLoading(true);
+        setWithdrawHistoryError("");
+      }
+      try {
+        const res = await fetch(`/api/admin/payment-history?type=withdrawals`, { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.items)) {
+          setWithdrawHistoryItems(data.items);
+          setWithdrawHistoryError("");
+        } else {
+          setWithdrawHistoryItems([]);
+          const msg =
+            typeof data?.error === "string"
+              ? data.error
+              : res.status === 403
+                ? "Access denied (need Withdrawals or Payment History permission)"
+                : res.status >= 500
+                  ? "Server error loading withdrawal history"
+                  : "Could not load withdrawal history";
+          setWithdrawHistoryError(msg);
+          if (!silent) toast.error(msg);
+        }
+      } catch {
+        setWithdrawHistoryItems([]);
+        const msg = "Network error loading withdrawal history";
+        setWithdrawHistoryError(msg);
+        if (!silent) toast.error(msg);
+      } finally {
+        if (!silent) setWithdrawHistoryLoading(false);
+      }
+    },
+    [session?.user?.id, status],
+  );
+
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!session?.user?.id || session.user.status !== "admin") return;
@@ -542,12 +745,20 @@ export function AdminPanelClient() {
 
   useEffect(() => {
     if (status !== "authenticated") return;
-    if (!session?.user?.id || session.user.status !== "admin") return;
+    if (!session?.user?.id) return;
+    if (active !== "withdrawHistory") return;
+    fetchWithdrawHistory(false).catch(() => undefined);
+  }, [active, fetchWithdrawHistory, session?.user?.id, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id) return;
     const refresh = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetchAdminDashboardData().catch(() => undefined);
       if (active === "users") fetchAdminUsers(true).catch(() => undefined);
       if (active === "payments") fetchPaymentHistory(true).catch(() => undefined);
+      if (active === "withdrawHistory") fetchWithdrawHistory(true).catch(() => undefined);
     };
     const id = window.setInterval(refresh, ADMIN_POLL_MS);
     const onVis = () => {
@@ -561,7 +772,15 @@ export function AdminPanelClient() {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
     };
-  }, [active, fetchAdminDashboardData, fetchAdminUsers, fetchPaymentHistory, session?.user?.id, session?.user?.status, status]);
+  }, [
+    active,
+    fetchAdminDashboardData,
+    fetchAdminUsers,
+    fetchPaymentHistory,
+    fetchWithdrawHistory,
+    session?.user?.id,
+    status,
+  ]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -678,6 +897,7 @@ export function AdminPanelClient() {
                     onClick={() => {
                       setActive(item.key as AdminNavKey);
                       setPaymentHistoryOpen(false);
+                      setWithdrawSectionOpen(false);
                     }}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === item.key ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
@@ -687,11 +907,73 @@ export function AdminPanelClient() {
                     {active === item.key ? <span className="text-primary">●</span> : null}
                   </button>
                 ))}
+                {canAdminSection("withdrawals") || canAdminSection("payments") ? (
+                  <div className="grid gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setWithdrawSectionOpen((v) => !v)}
+                      className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                        active === "withdrawPending" || active === "withdrawHistory"
+                          ? "bg-muted text-foreground"
+                          : "text-subtext hover:bg-muted hover:text-foreground"
+                      }`}
+                      aria-expanded={withdrawSectionOpen}
+                    >
+                      <span>Withdraw</span>
+                      <span className={`transition-transform ${withdrawSectionOpen ? "rotate-90" : ""}`}>›</span>
+                    </button>
+                    <div
+                      className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${
+                        withdrawSectionOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                      }`}
+                    >
+                      <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                        {canAdminSection("withdrawals") ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActive("withdrawPending");
+                              setWithdrawSectionOpen(true);
+                              setPaymentHistoryOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                              active === "withdrawPending"
+                                ? "bg-muted text-foreground"
+                                : "text-subtext hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            <span>Pending withdrawals</span>
+                            {active === "withdrawPending" ? <span className="text-primary">●</span> : null}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActive("withdrawHistory");
+                            setWithdrawSectionOpen(true);
+                            setPaymentHistoryOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                            active === "withdrawHistory"
+                              ? "bg-muted text-foreground"
+                              : "text-subtext hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span>Withdraw history</span>
+                          {active === "withdrawHistory" ? <span className="text-primary">●</span> : null}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {canAdminSection("payments") ? (
                 <div className="grid gap-1">
                   <button
                     type="button"
-                    onClick={() => setPaymentHistoryOpen((v) => !v)}
+                    onClick={() => {
+                      setPaymentHistoryOpen((v) => !v);
+                      setWithdrawSectionOpen(false);
+                    }}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                       active === "payments" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                     }`}
@@ -792,7 +1074,6 @@ export function AdminPanelClient() {
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
                       <option value="blocked">Blocked</option>
-                      <option value="admin">Admin</option>
                     </select>
                     <input
                       value={search}
@@ -1422,7 +1703,7 @@ export function AdminPanelClient() {
               </div>
             ) : null}
 
-            {active === "withdrawals" ? (
+            {active === "withdrawPending" ? (
                 <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1464,29 +1745,16 @@ export function AdminPanelClient() {
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              onClick={async () => {
+                              onClick={() => {
                                 setWithdrawMsg("");
-                                const txHash = prompt("Enter payout tx hash (BSC)") || "";
-                                if (!txHash) return;
-                                try {
-                                  const res = await fetch("/api/admin/withdrawals", {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ id: w.id, action: "approve", txHash }),
-                                  });
-                                  const data = await res.json();
-                                  if (!res.ok) {
-                                    setWithdrawMsg(typeof data?.error === "string" ? data.error : "Approve failed");
-                                    toast.error(typeof data?.error === "string" ? data.error : "Approve failed");
-                                    return;
-                                  }
-                                  setWithdrawMsg("Withdrawal approved");
-                                  toast.success("Withdrawal approved");
-                                  setPendingWithdrawals((prev) => prev.filter((x) => x.id !== w.id));
-                                } catch {
-                                  setWithdrawMsg("Approve failed");
-                                  toast.error("Approve failed");
-                                }
+                                setWithdrawApproveHash("");
+                                setWithdrawApproveModal({
+                                  id: w.id,
+                                  username: String(w.user?.username ?? w.userId ?? ""),
+                                  email: String(w.user?.email ?? "-"),
+                                  amount: String(w.amount ?? ""),
+                                  address: String(w.address ?? ""),
+                                });
                               }}
                               className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1 text-xs text-white ring-1 ring-primary/20"
                             >
@@ -1526,6 +1794,79 @@ export function AdminPanelClient() {
                     </div>
                   </div>
                 </div>
+              </div>
+            ) : null}
+
+            {active === "withdrawHistory" ? (
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-sm text-subtext">Withdraw</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">Withdraw history</div>
+                    <div className="mt-1 text-sm text-subtext">
+                      Pay by shows who approved or rejected. Staff only see withdrawals they processed; super admin sees all.
+                    </div>
+                    {withdrawHistoryError ? (
+                      <div className="mt-2 rounded-2xl bg-red-500/10 px-4 py-2 text-sm text-red-600 ring-1 ring-red-500/20">
+                        {withdrawHistoryError}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchWithdrawHistory(false).catch(() => undefined)}
+                    className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-card px-5 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {withdrawHistoryLoading ? (
+                  <div className="mt-6 px-4 py-8 text-center text-sm text-subtext">Loading…</div>
+                ) : (
+                  <div className="mt-6 overflow-x-auto rounded-2xl ring-1 ring-ring bg-card shadow-inner custom-scrollbar">
+                    <div className="min-w-[1120px]">
+                      <div className="grid grid-cols-[0.9fr_1fr_1fr_0.65fr_0.65fr_0.65fr_0.55fr_1fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                        <div>Pay by</div>
+                        <div>Time</div>
+                        <div>User</div>
+                        <div>Net payout</div>
+                        <div>Gross</div>
+                        <div>Fee</div>
+                        <div>Status</div>
+                        <div>Address</div>
+                      </div>
+                      <div className="divide-y divide-ring/50">
+                        {withdrawHistoryItems.map((row: any) => (
+                          <div
+                            key={row.id}
+                            className="grid grid-cols-[0.9fr_1fr_1fr_0.65fr_0.65fr_0.65fr_0.55fr_1fr] gap-2 px-4 py-3 text-sm"
+                          >
+                            <div className="font-medium text-foreground" title={String(row.payBy ?? "")}>
+                              {row.payBy != null && row.payBy !== "" ? row.payBy : "—"}
+                            </div>
+                            <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{row.user?.username}</div>
+                              <div className="truncate text-xs text-subtext">{row.user?.email}</div>
+                            </div>
+                            <div>{toUSD(Number(row.netPayout))}</div>
+                            <div className="text-subtext">
+                              {row.grossRequested != null ? toUSD(row.grossRequested) : "—"}
+                            </div>
+                            <div className="text-subtext">
+                              {row.feeAmount != null ? toUSD(row.feeAmount) : "—"}
+                            </div>
+                            <div className="text-xs">{row.status}</div>
+                            <div className="break-all text-xs text-subtext">{row.address}</div>
+                          </div>
+                        ))}
+                        {withdrawHistoryItems.length === 0 && (
+                          <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -1617,7 +1958,7 @@ export function AdminPanelClient() {
                     <div className="text-sm text-subtext">Payment History</div>
                     <div className="mt-1 text-lg font-semibold text-foreground">{paymentHistoryKindLabel[paymentHistoryKind]}</div>
                     <div className="mt-1 text-sm text-subtext">
-                      Deposits, withdrawals, commissions, charity & fee pool — pick a tab in the sidebar
+                      Deposits, commissions, charity & fee pool — pick a tab in the sidebar (withdrawal history is under Withdraw)
                     </div>
                   </div>
                   <button
@@ -1652,42 +1993,6 @@ export function AdminPanelClient() {
                               <div className="font-medium">{toUSD(Number(row.amount))}</div>
                               <div className="text-xs">{row.status}</div>
                               <div className="break-all font-mono text-xs text-subtext">{row.txHash}</div>
-                            </div>
-                          ))}
-                          {paymentHistoryItems.length === 0 && (
-                            <div className="px-4 py-8 text-center text-sm text-subtext">No records</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {paymentHistoryKind === "withdrawals" && (
-                      <div className="min-w-[1000px]">
-                        <div className="grid grid-cols-[1fr_1fr_0.7fr_0.7fr_0.7fr_0.6fr_1fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
-                          <div>Time</div>
-                          <div>User</div>
-                          <div>Net payout</div>
-                          <div>Gross</div>
-                          <div>Fee</div>
-                          <div>Status</div>
-                          <div>Address</div>
-                        </div>
-                        <div className="divide-y divide-ring/50">
-                          {paymentHistoryItems.map((row: any) => (
-                            <div key={row.id} className="grid grid-cols-[1fr_1fr_0.7fr_0.7fr_0.7fr_0.6fr_1fr] gap-2 px-4 py-3 text-sm">
-                              <div className="text-xs text-subtext">{new Date(row.at).toLocaleString()}</div>
-                              <div className="min-w-0">
-                                <div className="truncate font-medium">{row.user?.username}</div>
-                                <div className="truncate text-xs text-subtext">{row.user?.email}</div>
-                              </div>
-                              <div>{toUSD(Number(row.netPayout))}</div>
-                              <div className="text-subtext">
-                                {row.grossRequested != null ? toUSD(row.grossRequested) : "—"}
-                              </div>
-                              <div className="text-subtext">
-                                {row.feeAmount != null ? toUSD(row.feeAmount) : "—"}
-                              </div>
-                              <div className="text-xs">{row.status}</div>
-                              <div className="break-all text-xs text-subtext">{row.address}</div>
                             </div>
                           ))}
                           {paymentHistoryItems.length === 0 && (
@@ -1870,6 +2175,7 @@ export function AdminPanelClient() {
                   onClick={() => {
                     setActive(item.key as AdminNavKey);
                     setPaymentHistoryOpen(false);
+                    setWithdrawSectionOpen(false);
                     setMobileNavOpen(false);
                   }}
                   className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
@@ -1880,11 +2186,75 @@ export function AdminPanelClient() {
                   {active === item.key ? <span className="text-primary">●</span> : null}
                 </button>
               ))}
+              {canAdminSection("withdrawals") || canAdminSection("payments") ? (
+                <div className="mt-1 grid gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setWithdrawSectionOpen((v) => !v)}
+                    className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                      active === "withdrawPending" || active === "withdrawHistory"
+                        ? "bg-muted text-foreground"
+                        : "text-subtext hover:bg-muted hover:text-foreground"
+                    }`}
+                    aria-expanded={withdrawSectionOpen}
+                  >
+                    <span>Withdraw</span>
+                    <span className={`transition-transform ${withdrawSectionOpen ? "rotate-90" : ""}`}>›</span>
+                  </button>
+                  <div
+                    className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${
+                      withdrawSectionOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
+                      {canAdminSection("withdrawals") ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActive("withdrawPending");
+                            setWithdrawSectionOpen(true);
+                            setPaymentHistoryOpen(false);
+                            setMobileNavOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                            active === "withdrawPending"
+                              ? "bg-muted text-foreground"
+                              : "text-subtext hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span>Pending withdrawals</span>
+                          {active === "withdrawPending" ? <span className="text-primary">●</span> : null}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActive("withdrawHistory");
+                          setWithdrawSectionOpen(true);
+                          setPaymentHistoryOpen(false);
+                          setMobileNavOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${
+                          active === "withdrawHistory"
+                            ? "bg-muted text-foreground"
+                            : "text-subtext hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        <span>Withdraw history</span>
+                        {active === "withdrawHistory" ? <span className="text-primary">●</span> : null}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {canAdminSection("payments") ? (
               <div className="mt-1 grid gap-1">
                 <button
                   type="button"
-                  onClick={() => setPaymentHistoryOpen((v) => !v)}
+                  onClick={() => {
+                    setPaymentHistoryOpen((v) => !v);
+                    setWithdrawSectionOpen(false);
+                  }}
                   className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                     active === "payments" ? "bg-muted text-foreground" : "text-subtext hover:bg-muted hover:text-foreground"
                   }`}
@@ -2305,6 +2675,56 @@ export function AdminPanelClient() {
             </form>
           </div>
         </div>
+      )}
+
+      {withdrawApproveModal && (
+        <WithdrawApproveModal
+          username={withdrawApproveModal.username}
+          email={withdrawApproveModal.email}
+          netAmount={withdrawApproveModal.amount}
+          address={withdrawApproveModal.address}
+          txHash={withdrawApproveHash}
+          onTxHashChange={setWithdrawApproveHash}
+          loading={withdrawApproveLoading}
+          onCancel={() => {
+            if (!withdrawApproveLoading) {
+              setWithdrawApproveModal(null);
+              setWithdrawApproveHash("");
+            }
+          }}
+          onConfirm={async () => {
+            const txHash = withdrawApproveHash.trim();
+            if (!txHash || !withdrawApproveModal) return;
+            setWithdrawApproveLoading(true);
+            try {
+              const res = await fetch("/api/admin/withdrawals", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  id: withdrawApproveModal.id,
+                  action: "approve",
+                  txHash,
+                }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                setWithdrawMsg(typeof data?.error === "string" ? data.error : "Approve failed");
+                toast.error(typeof data?.error === "string" ? data.error : "Approve failed");
+                return;
+              }
+              setWithdrawMsg("Withdrawal approved");
+              toast.success("Withdrawal approved");
+              setPendingWithdrawals((prev) => prev.filter((x) => x.id !== withdrawApproveModal.id));
+              setWithdrawApproveModal(null);
+              setWithdrawApproveHash("");
+            } catch {
+              setWithdrawMsg("Approve failed");
+              toast.error("Approve failed");
+            } finally {
+              setWithdrawApproveLoading(false);
+            }
+          }}
+        />
       )}
 
       {confirmModal && (

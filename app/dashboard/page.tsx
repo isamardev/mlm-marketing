@@ -185,11 +185,26 @@ function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number
   );
 }
 
-function WithdrawSection({ profile }: { profile: any }) {
+const BEP20_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+function hasSavedBep20WithdrawAddress(profile: any): boolean {
+  const a = String(profile?.permanentWithdrawAddress ?? "").trim();
+  return BEP20_ADDRESS_RE.test(a);
+}
+
+function WithdrawSection({
+  profile,
+  onGoToWithdrawAddressSettings,
+}: {
+  profile: any;
+  onGoToWithdrawAddressSettings: () => void;
+}) {
   const [withdrawAmount, setWithdrawAmount] = useState<string>("10");
   const [withdrawAddress, setWithdrawAddress] = useState<string>(profile?.permanentWithdrawAddress || "");
   const [securityCode, setSecurityCode] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
+
+  const withdrawUnlocked = hasSavedBep20WithdrawAddress(profile);
 
   const withdrawGrossPreview = useMemo(() => {
     const n = Number(withdrawAmount);
@@ -204,6 +219,7 @@ function WithdrawSection({ profile }: { profile: any }) {
   }, [profile?.permanentWithdrawAddress]);
 
   const onWithdraw = async () => {
+    if (!withdrawUnlocked) return;
     setMsg("");
     try {
       const amt = Number(withdrawAmount);
@@ -217,7 +233,7 @@ function WithdrawSection({ profile }: { profile: any }) {
         toast.error(`Minimum withdrawal is ${MIN_WITHDRAW_OR_P2P_USDT} USDT`);
         return;
       }
-      if (!/^0x[a-fA-F0-9]{40}$/.test(withdrawAddress)) {
+      if (!/^0x[a-fA-F0-9]{40}$/.test(withdrawAddress.trim())) {
         setMsg("Invalid USDT address");
         toast.error("Invalid USDT address");
         return;
@@ -227,21 +243,24 @@ function WithdrawSection({ profile }: { profile: any }) {
         toast.error("Security Code is required");
         return;
       }
-      const res = await fetch("/api/user/withdraw-request", {
+      const res = await fetch("/api/user/withdraw-demo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: amt, address: withdrawAddress.trim(), securityCode: securityCode.trim() }),
+        body: JSON.stringify({
+          amount: amt,
+          address: withdrawAddress.trim(),
+          securityCode: securityCode.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg(typeof data?.error === "string" ? data.error : "Withdrawal request failed");
-        toast.error(typeof data?.error === "string" ? data.error : "Withdrawal request failed");
+        setMsg(typeof data?.error === "string" ? data.error : "Demo withdrawal failed");
+        toast.error(typeof data?.error === "string" ? data.error : "Demo withdrawal failed");
         return;
       }
-      setMsg("Withdrawal requested");
+      setMsg("Withdrawal requested — pending admin approval");
       toast.success("Withdrawal requested");
       setWithdrawAmount("10");
-      // Don't clear address if it's permanent
       if (!profile?.permanentWithdrawAddress) {
         setWithdrawAddress("");
       }
@@ -252,77 +271,103 @@ function WithdrawSection({ profile }: { profile: any }) {
         }
       } catch {}
     } catch {
-      setMsg("Withdrawal request failed");
-      toast.error("Withdrawal request failed");
+      setMsg("Demo withdrawal failed");
+      toast.error("Demo withdrawal failed");
     }
   };
 
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-      <div className="text-sm font-semibold">Withdraw Funds</div>
-      <div className="mt-1 text-xs text-subtext">Send USDT (BEP20) to your address · Minimum {MIN_WITHDRAW_OR_P2P_USDT} USDT</div>
-      <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground">
-        <span className="font-medium text-primary">Note:</span> A <span className="font-medium">{WITHDRAW_FEE_PERCENT}% fee</span> will be deducted from your withdrawal. The amount below is what you request from your wallet; you receive the net after the fee.
-      </div>
-      <div className="mx-auto mt-4 w-full max-w-md">
-        <div className="rounded-2xl bg-muted/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-ring sm:p-6">
-          <div className="grid gap-3">
-            <label className="grid gap-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-subtext">Withdraw Amount (USDT)</span>
-                <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
-              </div>
-              <input
-                type="number"
-                value={withdrawAmount}
-                onChange={(e) => setWithdrawAmount(e.target.value)}
-                className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder={`${MIN_WITHDRAW_OR_P2P_USDT}`}
-                min={MIN_WITHDRAW_OR_P2P_USDT}
-                step="0.01"
-              />
-            </label>
-            {withdrawGrossPreview != null ? (
-              <div className="rounded-xl bg-background/80 px-3 py-2.5 text-xs leading-relaxed text-foreground ring-1 ring-ring">
-                You will receive{" "}
-                <span className="font-semibold text-primary">{toUSD(withdrawNetAfterFee(withdrawGrossPreview))}</span> after the{" "}
-                {WITHDRAW_FEE_PERCENT}% fee (deducted from {toUSD(withdrawGrossPreview)} requested).
-              </div>
-            ) : null}
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">USDT Address (BEP20)</span>
-              <input
-                value={withdrawAddress}
-                onChange={(e) => setWithdrawAddress(e.target.value.trim())}
-                readOnly={!!profile?.permanentWithdrawAddress}
-                className={`h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 ${profile?.permanentWithdrawAddress ? "cursor-not-allowed bg-muted opacity-80" : ""}`}
-                placeholder="0x..."
-              />
-              {profile?.permanentWithdrawAddress && (
-                <span className="mt-1 px-1 text-[10px] text-green-500 font-medium italic">✓ Permanent withdrawal address applied</span>
-              )}
-            </label>
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">Security Code</span>
-              <input
-                type="password"
-                value={securityCode}
-                onChange={(e) => setSecurityCode(e.target.value.trim())}
-                className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder="Your Security Code"
-              />
-            </label>
+      <div className="text-sm font-semibold">Withdraw Funds (demo)</div>
+      {!withdrawUnlocked ? (
+        <>
+          <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
+            <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
+            <p className="mt-2 text-xs text-subtext">
+              Save your <span className="font-medium text-foreground">BEP20 USDT withdrawal address</span> in My Profile first. Until it is saved and locked, you cannot enter an amount or submit a withdrawal. This keeps payouts tied to your verified on-chain address.
+            </p>
+            <p className="mt-2 text-xs text-subtext">
+              Withdraw wallet balance:{" "}
+              <span className="font-semibold text-foreground">{toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
+            </p>
             <button
               type="button"
-              onClick={onWithdraw}
-              className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+              onClick={onGoToWithdrawAddressSettings}
+              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 sm:w-auto"
             >
-              Withdraw
+              Save withdrawal address
             </button>
-            {msg ? <div className="rounded-2xl bg-background/80 p-3 text-xs text-subtext ring-1 ring-ring">{msg}</div> : null}
           </div>
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          <div className="mt-1 text-xs text-subtext">
+            Security code, locked BEP20 address, {WITHDRAW_FEE_PERCENT}% fee. Your request stays pending until an admin approves (payout tx hash) or rejects (funds return to your withdraw wallet).
+          </div>
+          <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground">
+            <span className="font-medium text-primary">Note:</span> The <span className="font-medium">{WITHDRAW_FEE_PERCENT}% fee</span> is deducted from the amount you request; the net amount is what will be sent after approval.
+          </div>
+          <div className="mx-auto mt-4 w-full max-w-md">
+            <div className="rounded-2xl bg-muted/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-ring sm:p-6">
+              <div className="grid gap-3">
+                <label className="grid gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-subtext">Withdraw Amount (USDT)</span>
+                    <span className="text-xs font-medium text-primary">Balance: {toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder={`${MIN_WITHDRAW_OR_P2P_USDT}`}
+                    min={MIN_WITHDRAW_OR_P2P_USDT}
+                    step="0.01"
+                  />
+                </label>
+                {withdrawGrossPreview != null ? (
+                  <div className="rounded-xl bg-background/80 px-3 py-2.5 text-xs leading-relaxed text-foreground ring-1 ring-ring">
+                    You will receive{" "}
+                    <span className="font-semibold text-primary">{toUSD(withdrawNetAfterFee(withdrawGrossPreview))}</span> after the{" "}
+                    {WITHDRAW_FEE_PERCENT}% fee (deducted from {toUSD(withdrawGrossPreview)} requested).
+                  </div>
+                ) : null}
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">USDT Address (BEP20)</span>
+                  <input
+                    value={withdrawAddress}
+                    onChange={(e) => setWithdrawAddress(e.target.value.trim())}
+                    readOnly={!!profile?.permanentWithdrawAddress}
+                    className={`h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 ${profile?.permanentWithdrawAddress ? "cursor-not-allowed bg-muted opacity-80" : ""}`}
+                    placeholder="0x..."
+                  />
+                  {profile?.permanentWithdrawAddress && (
+                    <span className="mt-1 px-1 text-[10px] text-green-500 font-medium italic">✓ Permanent withdrawal address applied</span>
+                  )}
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">Security Code</span>
+                  <input
+                    type="password"
+                    value={securityCode}
+                    onChange={(e) => setSecurityCode(e.target.value.trim())}
+                    className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Your Security Code"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={onWithdraw}
+                  className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                >
+                  Demo Withdraw
+                </button>
+                {msg ? <div className="rounded-2xl bg-background/80 p-3 text-xs text-subtext ring-1 ring-ring">{msg}</div> : null}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1129,6 +1174,7 @@ export default function UserDashboardPage() {
   const [gateSecondsLeft, setGateSecondsLeft] = useState<number>(0);
   const [directReferrals, setDirectReferrals] = useState<number>(0);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [recentWithdrawals, setRecentWithdrawals] = useState<any[]>([]);
   const [recentDeposits, setRecentDeposits] = useState<any[]>([]);
   const [refStats, setRefStats] = useState<{ total: number; levels: Record<string, number> } | null>(null);
   const [teamNodes, setTeamNodes] = useState<any[] | null>(null);
@@ -1339,18 +1385,6 @@ export default function UserDashboardPage() {
       return 0;
     }
   }, [recentTransactions]);
-  const totalWithdrawAllTime = useMemo(() => {
-    try {
-      return Number(
-        (recentTransactions || [])
-          .filter((t: any) => String(t?.type || "").toLowerCase() === "withdrawal")
-          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
-          .toFixed(2),
-      );
-    } catch {
-      return 0;
-    }
-  }, [recentTransactions]);
 
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
@@ -1370,6 +1404,7 @@ export default function UserDashboardPage() {
         }
         return;
       }
+      setRecentWithdrawals(Array.isArray(dash.recentWithdrawals) ? dash.recentWithdrawals : []);
       if (dash?.profile) {
         setProfile(dash.profile);
         setCurrentLevel(Number(dash?.currentLevel ?? 0));
@@ -1431,6 +1466,12 @@ export default function UserDashboardPage() {
         const data = await res.json();
         if (res.ok) setCommissions(Array.isArray(data?.items) ? data.items : []);
       }
+
+      if (active === "wallet" && walletTab === "withdrawHistory") {
+        const wres = await fetch("/api/user/withdrawals", { cache: "no-store" });
+        const wdata = await wres.json();
+        if (wres.ok && Array.isArray(wdata?.items)) setRecentWithdrawals(wdata.items);
+      }
     } catch (err) {
       console.error("Dashboard refresh error:", err);
     }
@@ -1455,7 +1496,7 @@ export default function UserDashboardPage() {
         window.removeEventListener("profile:updated", handler);
       }
     };
-  }, [session?.user?.id, status]);
+  }, [session?.user?.id, status, active, walletTab]);
 
   useEffect(() => {
     if (!referralGate || referralGate.state !== "unverified") return;
@@ -2141,28 +2182,59 @@ export default function UserDashboardPage() {
                 </div>
               </div>
             )}
-            {active === "wallet" && walletTab === "withdraw" && <WithdrawSection profile={profile} />}
+            {active === "wallet" && walletTab === "withdraw" && (
+              <WithdrawSection
+                profile={profile}
+                onGoToWithdrawAddressSettings={() => {
+                  setActive("settings");
+                  setProfileTab("withdrawAddress");
+                  setProfileOpen(true);
+                }}
+              />
+            )}
             {active === "wallet" && walletTab === "withdrawHistory" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Withdrawal History</div>
+                <div className="mt-1 text-xs text-subtext">Net amount after fee · Hash shown when approved</div>
                 <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
-                  <div className="min-w-[400px]">
-                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                  <div className="min-w-[520px]">
+                    <div className="grid grid-cols-[1fr_0.7fr_0.9fr_0.75fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>Hash</div>
-                      <div>Amount</div>
+                      <div>Net (USDT)</div>
+                      <div>Status</div>
                       <div>Date</div>
                     </div>
                     <div className="divide-y divide-[color:var(--ring)]">
-                      {recentTransactions
-                        .filter((t: any) => String(t.type).toLowerCase() === "withdrawal")
-                        .map((t: any) => (
-                          <div key={t.id} className="grid grid-cols-[1.2fr_1fr_0.8fr] gap-2 px-4 py-4 text-sm">
-                            <div className="truncate">{t.txHash ?? "-"}</div>
-                            <div className="font-medium text-foreground">{String(t.amount)}</div>
-                            <div className="text-subtext">{String(t.createdAt).slice(0, 10)}</div>
+                      {recentWithdrawals.map((w: any) => (
+                        <div key={w.id} className="grid grid-cols-[1fr_0.7fr_0.9fr_0.75fr] gap-2 px-4 py-4 text-sm">
+                          <div className="truncate font-mono text-[11px]" title={w.txHash || undefined}>
+                            {w.txHash || (w.status === "pending" ? "Pending approval" : "—")}
                           </div>
-                        ))}
-                      {recentTransactions.filter((t: any) => String(t.type).toLowerCase() === "withdrawal").length === 0 && (
+                          <div className="font-medium text-foreground">
+                            {Number(w.amount ?? 0).toFixed(2)}
+                            {w.grossRequested != null ? (
+                              <span className="ml-1 block text-[10px] font-normal text-subtext">
+                                gross {Number(w.grossRequested).toFixed(2)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${
+                                w.status === "approved"
+                                  ? "bg-green-500/10 text-green-500 ring-green-500/20"
+                                  : w.status === "pending"
+                                    ? "bg-yellow-500/10 text-yellow-500 ring-yellow-500/20"
+                                    : "bg-red-500/10 text-red-500 ring-red-500/20"
+                              }`}
+                            >
+                              {String(w.status || "")}
+                            </span>
+                          </div>
+                          <div className="text-subtext">{String(w.createdAt).slice(0, 10)}</div>
+                        </div>
+                      ))}
+                      {recentWithdrawals.length === 0 && (
                         <div className="px-4 py-6 text-center text-sm text-subtext">No withdrawals yet</div>
                       )}
                     </div>

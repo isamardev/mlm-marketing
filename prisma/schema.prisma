@@ -46,7 +46,9 @@ model User {
   transactions       Transaction[]   @relation("UserTransactions")
   referredBy         User?           @relation("UserReferrals", fields: [referredById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   referrals          User[]          @relation("UserReferrals")
-  withdrawals        Withdrawal[]
+  withdrawals         Withdrawal[]
+  withdrawalsApproved Withdrawal[]   @relation("WithdrawalApprovedBy")
+  withdrawalsRejected Withdrawal[]   @relation("WithdrawalRejectedBy")
 
   @@index([referredById])
   @@index([adminRoleId])
@@ -157,6 +159,11 @@ model Withdrawal {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   user      User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Set when approved: admin panel user who saved the payout tx hash
+  approvedByUserId String?
+  approvedBy       User?    @relation("WithdrawalApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  rejectedByUserId String?
+  rejectedBy       User?    @relation("WithdrawalRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   // Net payout in `amount`; optional breakdown for admin Payment History (fee split)
   grossRequested Decimal? @db.Decimal(18, 2)
   feeAmount      Decimal? @db.Decimal(18, 2)
@@ -164,6 +171,8 @@ model Withdrawal {
   feePoolAmount  Decimal? @db.Decimal(18, 2)
 
   @@index([userId, status])
+  @@index([approvedByUserId])
+  @@index([rejectedByUserId])
 }
 
 model PendingUser {

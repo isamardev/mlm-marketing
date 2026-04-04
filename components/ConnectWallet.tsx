@@ -1,4 +1,5 @@
 "use client";
+/** Requires WagmiProvider in the tree if you mount this component (not used by default). */
 
 import { useMemo } from "react";
 import { useAccount, useConnect, useSwitchChain } from "wagmi";

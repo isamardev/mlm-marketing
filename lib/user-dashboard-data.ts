@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -23,6 +24,8 @@ export type UserDashboardPayload = {
   currentLevel: number;
   recentTransactions: Array<Record<string, unknown>>;
   recentDeposits: Array<Record<string, unknown>>;
+  /** Withdrawal records (pending / approved / rejected); user history is not stored as Transaction.type withdrawal. */
+  recentWithdrawals: Array<Record<string, unknown>>;
   depositTotal: number;
   withdrawalTotal: number;
   referralGate: null | { state: "unverified" | "verified"; expiresAt: string; secondsLeft: number };
@@ -158,6 +161,20 @@ export async function getUserDashboardPayload(
     db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
+  let recentWithdrawals: Awaited<ReturnType<typeof db.withdrawal.findMany>> = [];
+  try {
+    recentWithdrawals = await withWithdrawalColumnRetry(db, () =>
+      db.withdrawal.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+    );
+  } catch (err) {
+    console.error("user-dashboard-data: withdrawal.findMany failed", err);
+    recentWithdrawals = [];
+  }
+
   let currentLevel = 0;
   if (referrals >= 2) {
     currentLevel = Math.floor(Math.log2(referrals));
@@ -180,6 +197,16 @@ export async function getUserDashboardPayload(
       amount: Number(d.amount),
       createdAt: d.createdAt.toISOString(),
     })) as unknown as UserDashboardPayload["recentDeposits"],
+    recentWithdrawals: recentWithdrawals.map((w) => ({
+      id: w.id,
+      address: w.address,
+      amount: Number(w.amount),
+      grossRequested: w.grossRequested != null ? Number(w.grossRequested) : null,
+      feeAmount: w.feeAmount != null ? Number(w.feeAmount) : null,
+      status: w.status,
+      txHash: w.txHash,
+      createdAt: w.createdAt.toISOString(),
+    })) as unknown as UserDashboardPayload["recentWithdrawals"],
     depositTotal,
     withdrawalTotal,
     referralGate,

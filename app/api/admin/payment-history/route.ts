@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
+import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
 import { Prisma } from "@prisma/client";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
@@ -8,14 +10,47 @@ const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase
 const TYPES = ["deposits", "withdrawals", "commissions", "charity", "fee"] as const;
 type HistoryType = (typeof TYPES)[number];
 
+type ApproverRow = {
+  username: string;
+  email: string;
+};
+
+/** Who approved or rejected — username, else email */
+function withdrawalActionByLabel(
+  status: string,
+  approver: ApproverRow | null | undefined,
+  rejector: ApproverRow | null | undefined,
+): string {
+  if (status === "approved") {
+    if (!approver) return "—";
+    const u = approver.username?.trim();
+    const e = approver.email?.trim();
+    return u || e || "—";
+  }
+  if (status === "rejected") {
+    if (!rejector) return "—";
+    const u = rejector.username?.trim();
+    const e = rejector.email?.trim();
+    return u || e || "—";
+  }
+  return "—";
+}
+
 export async function GET(req: Request) {
   try {
-    const gate = await requireAdminSection("payments");
-    if (!gate.ok) return gate.response;
-
     const url = new URL(req.url);
     const raw = (url.searchParams.get("type") || "deposits").toLowerCase();
     const type = (TYPES.includes(raw as HistoryType) ? raw : "deposits") as HistoryType;
+
+    if (type === "withdrawals") {
+      const gateWd = await requireAdminSection("withdrawals");
+      const gatePay = await requireAdminSection("payments");
+      if (!gateWd.ok && !gatePay.ok) return gateWd.response;
+    } else {
+      const gate = await requireAdminSection("payments");
+      if (!gate.ok) return gate.response;
+    }
+
     const take = Math.min(500, Math.max(20, Number(url.searchParams.get("take") ?? 200)));
 
     const db = getDb();
@@ -44,28 +79,82 @@ export async function GET(req: Request) {
     }
 
     if (type === "withdrawals") {
-      const items = await db.withdrawal.findMany({
-        orderBy: { createdAt: "desc" },
-        take,
-        include: {
-          user: { select: { id: true, username: true, email: true, walletAddress: true } },
-        },
-      });
+      const session = await auth();
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      /** Super admin / full access: all rows. Staff: only withdrawals they approved or rejected. */
+      const staffScoped = session.user.adminFullAccess !== true;
+      const where = staffScoped
+        ? {
+            OR: [
+              { approvedByUserId: session.user.id },
+              { rejectedByUserId: session.user.id },
+            ],
+          }
+        : {};
+
+      const items = await withWithdrawalColumnRetry(db, () =>
+        db.withdrawal.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take,
+          include: {
+            user: { select: { id: true, username: true, email: true, walletAddress: true } },
+          },
+        }),
+      );
+
+      const approverIds = [
+        ...new Set(
+          [
+            ...items.map((w) => (w as { approvedByUserId?: string | null }).approvedByUserId),
+            ...items.map((w) => (w as { rejectedByUserId?: string | null }).rejectedByUserId),
+          ].filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      ];
+
+      const approverById = new Map<string, ApproverRow>();
+      if (approverIds.length > 0) {
+        const approvers = await db.user.findMany({
+          where: { id: { in: approverIds } },
+          select: { id: true, username: true, email: true },
+        });
+        for (const u of approvers) {
+          approverById.set(u.id, { username: u.username, email: u.email });
+        }
+        // Hardcoded NextAuth id for demo admin login — no User row in DB
+        for (const aid of approverIds) {
+          if (approverById.has(aid)) continue;
+          if (aid === "admin-fixed") {
+            const email = process.env.ADMIN_EMAIL?.trim() || "admin@example.com";
+            approverById.set(aid, { username: "Admin", email });
+          }
+        }
+      }
+
       return NextResponse.json({
         type,
-        items: items.map((w) => ({
-          id: w.id,
-          at: w.createdAt.toISOString(),
-          user: w.user,
-          netPayout: Number(w.amount),
-          status: w.status,
-          address: w.address,
-          txHash: w.txHash,
-          grossRequested: w.grossRequested != null ? Number(w.grossRequested) : null,
-          feeAmount: w.feeAmount != null ? Number(w.feeAmount) : null,
-          charityAmount: w.charityAmount != null ? Number(w.charityAmount) : null,
-          feePoolAmount: w.feePoolAmount != null ? Number(w.feePoolAmount) : null,
-        })),
+        items: items.map((w) => {
+          const aid = (w as { approvedByUserId?: string | null }).approvedByUserId;
+          const rid = (w as { rejectedByUserId?: string | null }).rejectedByUserId;
+          const approver = aid ? approverById.get(aid) : undefined;
+          const rejector = rid ? approverById.get(rid) : undefined;
+          return {
+            id: w.id,
+            at: w.createdAt.toISOString(),
+            user: w.user,
+            netPayout: Number(w.amount),
+            status: w.status,
+            address: w.address,
+            txHash: w.txHash,
+            grossRequested: w.grossRequested != null ? Number(w.grossRequested) : null,
+            feeAmount: w.feeAmount != null ? Number(w.feeAmount) : null,
+            charityAmount: w.charityAmount != null ? Number(w.charityAmount) : null,
+            feePoolAmount: w.feePoolAmount != null ? Number(w.feePoolAmount) : null,
+            payBy: withdrawalActionByLabel(w.status, approver, rejector),
+          };
+        }),
       });
     }
 
@@ -159,16 +248,18 @@ export async function GET(req: Request) {
     }
 
     if (type === "charity") {
-      const items = await db.withdrawal.findMany({
-        where: {
-          charityAmount: { gt: new Prisma.Decimal(0) },
-        },
-        orderBy: { createdAt: "desc" },
-        take,
-        include: {
-          user: { select: { id: true, username: true, email: true, walletAddress: true } },
-        },
-      });
+      const items = await withWithdrawalColumnRetry(db, () =>
+        db.withdrawal.findMany({
+          where: {
+            charityAmount: { gt: new Prisma.Decimal(0) },
+          },
+          orderBy: { createdAt: "desc" },
+          take,
+          include: {
+            user: { select: { id: true, username: true, email: true, walletAddress: true } },
+          },
+        }),
+      );
       return NextResponse.json({
         type,
         items: items.map((w) => ({
@@ -185,16 +276,18 @@ export async function GET(req: Request) {
     }
 
     // fee pool history (90% of withdrawal fee)
-    const items = await db.withdrawal.findMany({
-      where: {
-        feePoolAmount: { gt: new Prisma.Decimal(0) },
-      },
-      orderBy: { createdAt: "desc" },
-      take,
-      include: {
-        user: { select: { id: true, username: true, email: true, walletAddress: true } },
-      },
-    });
+    const items = await withWithdrawalColumnRetry(db, () =>
+      db.withdrawal.findMany({
+        where: {
+          feePoolAmount: { gt: new Prisma.Decimal(0) },
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        include: {
+          user: { select: { id: true, username: true, email: true, walletAddress: true } },
+        },
+      }),
+    );
     return NextResponse.json({
       type: "fee",
       items: items.map((w) => ({

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\"",
+    "dev": "next dev --turbo",
+    "dev:webpack": "next dev --webpack",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push --skip-generate",
     "build": "npx prisma generate && next build",

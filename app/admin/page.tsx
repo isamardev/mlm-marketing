@@ -1,8 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { signOut, useSession } from "next-auth/react";
 import AdminLoginForm from "./AdminLoginForm";
-import { AdminPanelClient } from "./AdminPanelClient";
+
+const AdminPanelClient = dynamic(
+  () => import("./AdminPanelClient").then((m) => ({ default: m.AdminPanelClient })),
+  {
+    loading: () => (
+      <div className="flex min-h-screen items-center justify-center bg-transparent text-foreground">
+        <div className="text-sm text-subtext">Loading admin…</div>
+      </div>
+    ),
+    ssr: false,
+  },
+);
 
 export default function AdminPage() {
   const { data: session, status } = useSession();
