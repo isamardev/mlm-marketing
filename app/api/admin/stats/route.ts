@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
+import { isActivatedMemberStatus } from "@/lib/user-status";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
 
@@ -29,7 +30,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1–2. All users (for balances split). "Total Users" card = non-admin with status `active` only.
+    // 1–2. All users (for balances split). "Total Users" card = non-admin activated members (`active` or `withdraw_suspend`, same as MLM "active member").
     let allUsers: any[] = [];
     try {
       allUsers = await db.$queryRawUnsafe<any[]>(
@@ -117,7 +118,7 @@ export async function GET() {
         adminIds.push(u.id);
       } else {
         nonAdminCount++;
-        if (u.status === "active") {
+        if (isActivatedMemberStatus(u.status)) {
           activeNonAdminCount++;
         }
         totalBal += b;

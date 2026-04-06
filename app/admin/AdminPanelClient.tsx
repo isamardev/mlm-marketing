@@ -37,6 +37,20 @@ const BEP20_USDT_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const INVALID_BEP20_WITHDRAW_MSG =
   "Invalid withdrawal address. Enter a valid BEP20 USDT address: 0x followed by exactly 40 hexadecimal characters (42 characters total).";
 
+/** Users table: membership status — DB may use `withdraw_suspend` but we show `active` here. */
+function adminUserAccountStatusLabel(status: string | undefined) {
+  const s = String(status ?? "");
+  return s === "withdraw_suspend" ? "active" : s;
+}
+
+/** Withdraw column: only active / withdraw_suspend get labels; others not eligible. */
+function adminUserWithdrawAccessLabel(status: string | undefined): { text: string; tone: "active" | "suspend" | "na" } {
+  const s = String(status ?? "");
+  if (s === "withdraw_suspend") return { text: "Withdraw suspend", tone: "suspend" };
+  if (s === "active") return { text: "Withdraw active", tone: "active" };
+  return { text: "—", tone: "na" };
+}
+
 /** Log full API payload; never show raw server / DB errors in toast. */
 function toastAdminApiError(payload: unknown) {
   console.error("[admin API]", payload);
@@ -1151,10 +1165,11 @@ export function AdminPanelClient() {
                   </div>
                 </div>
                 <div className="mt-6 w-full max-w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar bg-card shadow-inner">
-                  <div className="min-w-[900px]">
-                    <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_1.15fr_0.65fr_1.5fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
+                  <div className="min-w-[1040px]">
+                    <div className="grid grid-cols-[1.15fr_0.62fr_0.95fr_0.72fr_1.1fr_0.58fr_1.45fr] gap-2 bg-muted/50 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-subtext border-b border-ring">
                       <div>User</div>
                       <div>Status</div>
+                      <div>Withdraw</div>
                       <div>Verify</div>
                       <div>Balances</div>
                       <div>Downline</div>
@@ -1179,7 +1194,7 @@ export function AdminPanelClient() {
                           );
                         })
                         .map((u) => (
-                          <div key={u.id} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_1.15fr_0.65fr_1.5fr] gap-2 px-4 py-4 text-sm transition hover:bg-muted/30">
+                          <div key={u.id} className="grid grid-cols-[1.15fr_0.62fr_0.95fr_0.72fr_1.1fr_0.58fr_1.45fr] gap-2 px-4 py-4 text-sm transition hover:bg-muted/30">
                             <div className="min-w-0">
                               <div className="truncate font-medium text-foreground">{u.username}</div>
                               <div className="truncate text-[10px] text-subtext">{u.email}</div>
@@ -1187,17 +1202,34 @@ export function AdminPanelClient() {
                             <div className="flex items-center">
                               <span
                                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${
-                                  u.status === "active" || u.status === "admin"
+                                  u.status === "active" || u.status === "admin" || u.status === "withdraw_suspend"
                                     ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
-                                    : u.status === "withdraw_suspend"
-                                      ? "bg-[rgba(245,158,11,0.12)] text-foreground ring-[rgba(245,158,11,0.4)]"
                                     : u.status === "inactive"
                                     ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
                                     : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
                                 }`}
                               >
-                                {u.status}
+                                {adminUserAccountStatusLabel(u.status)}
                               </span>
+                            </div>
+                            <div className="flex items-center min-w-0">
+                              {(() => {
+                                const w = adminUserWithdrawAccessLabel(u.status);
+                                if (w.tone === "na") {
+                                  return <span className="text-[10px] text-subtext">{w.text}</span>;
+                                }
+                                return (
+                                  <span
+                                    className={`inline-flex max-w-full truncate items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${
+                                      w.tone === "suspend"
+                                        ? "bg-[rgba(245,158,11,0.12)] text-foreground ring-[rgba(245,158,11,0.4)]"
+                                        : "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                    }`}
+                                  >
+                                    {w.text}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center">
                               {u.verifyStatus === "verified" ? (
