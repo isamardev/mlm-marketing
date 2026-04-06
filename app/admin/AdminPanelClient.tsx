@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { FaUser, FaSignOutAlt, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
 type NavItem = {
   key: string;
@@ -215,27 +216,52 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Depth 0 = company root; downline L1…L33 (payout logic still L1–20). */
+function formatAdminTreeLevelLabel(depth: number) {
+  const d = Number(depth);
+  if (d === 0) return "Root";
+  return `L${d}`;
+}
+
 function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], origin: string, onCopyMessage: (message: string) => void }) {
-  const [w, setW] = useState(320);
-  const ref = (typeof window !== "undefined" ? (document.createElement("div") as HTMLDivElement) : null);
+  const treeCanvasRef = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(800);
   useEffect(() => {
+    const el = treeCanvasRef.current;
     const update = () => {
-      const el = document.getElementById("admin-tree-canvas");
-      const width = el ? (el.clientWidth || 800) : 800;
-      setW(width);
+      const cw = el?.clientWidth ?? 0;
+      setW(cw > 0 ? cw : 800);
     };
     update();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => update()) : null;
+    if (el && ro) ro.observe(el);
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+    return () => {
+      window.removeEventListener("resize", update);
+      if (el && ro) ro.unobserve(el);
+    };
+  }, [nodes]);
 
   const nodesByDepth = useMemo(() => {
     const grouped: Record<number, any[]> = {};
     nodes.forEach((node) => {
-      if (!grouped[node.depth]) grouped[node.depth] = [];
-      grouped[node.depth].push(node);
+      const d = Number(node.depth);
+      if (!Number.isFinite(d)) return;
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(node);
     });
     return grouped;
+  }, [nodes]);
+
+  const directCountByParentId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of nodes) {
+      const pid = n.referredById;
+      if (pid) {
+        m.set(pid, (m.get(pid) ?? 0) + 1);
+      }
+    }
+    return m;
   }, [nodes]);
 
   const depths = Object.keys(nodesByDepth).map(Number).sort((a, b) => a - b);
@@ -281,7 +307,7 @@ function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], orig
   }
 
   return (
-    <div id="admin-tree-canvas" className="relative mt-5 w-full overflow-hidden">
+    <div ref={treeCanvasRef} id="admin-tree-canvas" className="relative mt-5 w-full min-w-[280px] overflow-hidden">
       <svg width={svgW} height={svgH} className="block" style={{ maxWidth: "100%" }}>
         {lines.map((ln, idx) => (
           <line key={idx} x1={ln.x1} y1={ln.y1} x2={ln.x2} y2={ln.y2} stroke="var(--ring)" strokeWidth={1.5} />
@@ -298,23 +324,29 @@ function NetworkTreeAdmin({ nodes, origin, onCopyMessage }: { nodes: any[], orig
                 <div className="mt-1 text-xs font-medium text-foreground max-w-[80px] truncate">
                   {pt.node.username}
                 </div>
-                <div className="text-[10px] text-subtext">L{pt.node.depth}</div>
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const text = origin ? `${origin}/?ref=${pt.node.referrerCode}` : pt.node.referrerCode;
-                    try {
-                      await navigator.clipboard.writeText(text);
-                      onCopyMessage(`Copied ${pt.node.username}'s referral link`);
-                    } catch {
-                      onCopyMessage("Copy failed");
-                    }
-                  }}
-                  className="mt-1 text-[8px] text-blue-500 hover:text-blue-700 underline"
-                >
-                  Copy Link
-                </button>
+                <div className="text-[10px] text-subtext">{formatAdminTreeLevelLabel(pt.node.depth)}</div>
+                {(directCountByParentId.get(pt.node.id) ?? 0) >= 2 ? null : (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const text = origin ? `${origin}/?ref=${pt.node.referrerCode}` : pt.node.referrerCode;
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        onCopyMessage(`Copied ${pt.node.username}'s referral link`);
+                        toast.success("Referral link copied");
+                      } catch {
+                        onCopyMessage("Copy failed");
+                        toast.error("Copy failed");
+                      }
+                    }}
+                    className="mt-1 inline-flex max-w-[min(100%,220px)] items-center gap-2 rounded-full bg-card px-3 py-1 text-[10px] text-subtext ring-1 ring-ring transition hover:text-foreground"
+                    title="Copy team member referral link"
+                  >
+                    <span className="truncate max-w-[120px] sm:max-w-[200px]">{pt.node.referrerCode}</span>
+                    <span className="shrink-0 text-primary">Copy</span>
+                  </button>
+                )}
               </div>
             </div>
           )),
@@ -339,7 +371,7 @@ export function AdminPanelClient() {
   const [payoutUserId, setPayoutUserId] = useState("");
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutHash, setPayoutHash] = useState("");
-  const [adminTreeNodes, setAdminTreeNodes] = useState<any[] | null>(null);
+  const [adminTreeNodes, setAdminTreeNodes] = useState<any[]>([]);
   const [origin, setOrigin] = useState("");
   const [adminUiMsg, setAdminUiMsg] = useState("");
   const [pendingWithdrawals, setPendingWithdrawals] = useState<any[]>([]);
@@ -359,6 +391,7 @@ export function AdminPanelClient() {
   const [deposits, setDeposits] = useState<any[]>([]);
   const [depositStatus, setDepositStatus] = useState<string>("all");
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [userStatusActivatingId, setUserStatusActivatingId] = useState<string | null>(null);
   const [usersLoading, setUsersLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
@@ -373,6 +406,7 @@ export function AdminPanelClient() {
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const adminMenuRef = useRef<HTMLDivElement>(null);
+  const userActivateInFlightRef = useRef(false);
 
   const [rolesList, setRolesList] = useState<
     {
@@ -403,11 +437,25 @@ export function AdminPanelClient() {
   /** Optional new password only; empty = keep current */
   const [editStaffNewPassword, setEditStaffNewPassword] = useState("");
   const [showEditStaffPassword, setShowEditStaffPassword] = useState(false);
+  const [showEditUserNewPassword, setShowEditUserNewPassword] = useState(false);
+  const [editUserAccountStatus, setEditUserAccountStatus] = useState<"active" | "blocked">("active");
+  const [editUserWithdrawalAccess, setEditUserWithdrawalAccess] = useState<"active" | "suspend">("active");
   const [adminRolesForSelect, setAdminRolesForSelect] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     if (userStatusFilter === "admin") setUserStatusFilter("all");
   }, [userStatusFilter]);
+
+  useEffect(() => {
+    setShowEditUserNewPassword(false);
+  }, [editingUser?.id]);
+
+  useEffect(() => {
+    if (!editingUser) return;
+    if (editingUser.status === "admin") return;
+    setEditUserAccountStatus(editingUser.status === "blocked" ? "blocked" : "active");
+    setEditUserWithdrawalAccess(editingUser.status === "withdraw_suspend" ? "suspend" : "active");
+  }, [editingUser?.id]);
 
   const adminFullAccess = session?.user?.adminFullAccess === true;
   const adminAllowedSections = session?.user?.adminAllowedSections ?? [];
@@ -611,9 +659,12 @@ export function AdminPanelClient() {
           })(),
           (async () => {
             const treeRes = await fetch("/api/admin/tree", { cache: "no-store" });
-            if (treeRes.ok) {
-              const t = await treeRes.json();
-              if (Array.isArray(t?.nodes)) setAdminTreeNodes(t.nodes);
+            const t = await treeRes.json().catch(() => ({}));
+            if (treeRes.ok && Array.isArray(t?.nodes)) {
+              setAdminTreeNodes(t.nodes);
+            } else {
+              setAdminTreeNodes([]);
+              console.error("[admin tree]", treeRes.status, t);
             }
           })(),
         );
@@ -1053,7 +1104,7 @@ export function AdminPanelClient() {
                     <div className="text-sm font-semibold">Users</div>
                     <div className="mt-1 text-xs text-subtext leading-relaxed sm:text-sm">
                       Users with downline count <br className="sm:hidden" />
-                      (33 levels · payouts L1-20)
+                      (tree depth {TREE_QUERY_MAX_DEPTH} · commissions L1–20)
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1066,6 +1117,7 @@ export function AdminPanelClient() {
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
                       <option value="blocked">Blocked</option>
+                      <option value="withdraw_suspend">Withdraw suspend</option>
                     </select>
                     <input
                       value={search}
@@ -1123,6 +1175,8 @@ export function AdminPanelClient() {
                                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${
                                   u.status === "active" || u.status === "admin"
                                     ? "bg-[rgba(16,185,129,0.10)] text-foreground ring-[rgba(16,185,129,0.35)]"
+                                    : u.status === "withdraw_suspend"
+                                      ? "bg-[rgba(245,158,11,0.12)] text-foreground ring-[rgba(245,158,11,0.4)]"
                                     : u.status === "inactive"
                                     ? "bg-[rgba(255,106,0,0.10)] text-foreground ring-[rgba(255,106,0,0.35)]"
                                     : "bg-[rgba(239,68,68,0.10)] text-foreground ring-[rgba(239,68,68,0.35)]"
@@ -1210,16 +1264,20 @@ export function AdminPanelClient() {
                                 <span className="text-[10px] font-medium text-subtext uppercase tracking-wider px-2">Admin</span>
                               ) : (
                                 <>
-                                  {u.status !== "active" && (
+                                  {(u.status === "inactive" || u.status === "blocked") && (
                                     <button
                                       type="button"
-                                      title={u.status === "blocked" ? "Unblock" : "Activate"}
+                                      disabled={userStatusActivatingId === u.id}
+                                      title={u.status === "blocked" ? "Unblock (activate)" : "Activate"}
                                       onClick={() => {
                                         const actionLabel = u.status === "blocked" ? "unblock" : "activate";
                                         setConfirmModal({
                                           message: `You are about to ${actionLabel} ${u.username}. This will allow them to access their account again.`,
                                           confirmLabel: actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1),
                                           onConfirm: async () => {
+                                            if (userActivateInFlightRef.current) return;
+                                            userActivateInFlightRef.current = true;
+                                            setUserStatusActivatingId(u.id);
                                             setConfirmModal(null);
                                             try {
                                               const res = await fetch("/api/admin/users/status", {
@@ -1236,47 +1294,16 @@ export function AdminPanelClient() {
                                               setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "active" } : x)));
                                             } catch {
                                               toast.error("Update failed");
+                                            } finally {
+                                              userActivateInFlightRef.current = false;
+                                              setUserStatusActivatingId(null);
                                             }
                                           },
                                         });
                                       }}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20 hover:bg-primary hover:text-white transition"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20 hover:bg-primary hover:text-white transition disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                       ✓
-                                    </button>
-                                  )}
-                                  {u.status !== "inactive" && u.status !== "admin" && (
-                                    <button
-                                      type="button"
-                                      title="Deactivate User"
-                                      onClick={() => {
-                                        setConfirmModal({
-                                          message: `Are you sure you want to deactivate ${u.username}? They will not be able to perform some actions.`,
-                                          confirmLabel: "Deactivate",
-                                          onConfirm: async () => {
-                                            setConfirmModal(null);
-                                            try {
-                                              const res = await fetch("/api/admin/users/status", {
-                                                method: "PATCH",
-                                                headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ id: u.id, status: "inactive" }),
-                                              });
-                                              const data = await res.json();
-                                              if (!res.ok) {
-                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
-                                                return;
-                                              }
-                                              toast.success("User deactivated");
-                                              setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: "inactive" } : x)));
-                                            } catch {
-                                              toast.error("Update failed");
-                                            }
-                                          },
-                                        });
-                                      }}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground ring-1 ring-ring hover:bg-muted/80 transition"
-                                    >
-                                      ⊘
                                     </button>
                                   )}
                                   {u.status !== "blocked" && u.status !== "admin" && (
@@ -1467,7 +1494,7 @@ export function AdminPanelClient() {
             ) : null}
 
             {active === "roles" && adminFullAccess ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+              <div className="custom-scrollbar max-h-[min(90vh,calc(100dvh-10rem))] w-full max-w-full overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="text-sm font-semibold">Admin roles</div>
                 <div className="mt-1 text-sm text-subtext">
                   Each role creates one staff admin user. They must sign in at{" "}
@@ -2092,17 +2119,19 @@ export function AdminPanelClient() {
               </div>
             ) : null}
 
-            {active === "overview" && adminTreeNodes ? (
+            {active === "overview" ? (
               <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold">Admin Tree</div>
                     <div className="mt-1 text-xs text-subtext leading-relaxed sm:text-sm">
                       Company root with full downline <br className="sm:hidden" />
-                      (L1-33 · payouts L1-20)
+                      (tree L1–{TREE_QUERY_MAX_DEPTH} · commissions L1–20)
                     </div>
                   </div>
-                  <div className="text-xs font-medium text-primary sm:text-sm">{adminTreeNodes.length} nodes</div>
+                  <div className="text-xs font-medium text-primary sm:text-sm">
+                    {adminTreeNodes.filter((n) => Number(n.depth) > 0).length} downline
+                  </div>
                 </div>
                 <div className="mt-6 max-h-[380px] overflow-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="divide-y divide-[color:var(--ring)]">
@@ -2110,7 +2139,7 @@ export function AdminPanelClient() {
                       <div key={n.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3 text-sm">
                         <div className="min-w-0 truncate">
                           <div className="font-medium text-foreground">{n.username}</div>
-                          <div className="text-xs text-subtext">L{n.depth} · {n.referrerCode}</div>
+                          <div className="text-xs text-subtext">{formatAdminTreeLevelLabel(n.depth)} · {n.referrerCode}</div>
                         </div>
                         <div className="max-w-[45%] truncate text-xs text-subtext">{n.email}</div>
                       </div>
@@ -2300,7 +2329,7 @@ export function AdminPanelClient() {
               </div>
             </div>
             <form
-              className="max-h-[80vh] space-y-4 overflow-y-auto p-6"
+              className="flex flex-col"
               onSubmit={async (e) => {
                 e.preventDefault();
                 const name = editRoleName.trim();
@@ -2366,6 +2395,7 @@ export function AdminPanelClient() {
                 }
               }}
             >
+              <div className="custom-scrollbar max-h-[min(70vh,calc(90vh-11rem))] space-y-4 overflow-y-auto overflow-x-hidden px-6 py-4">
               <label className="block">
                 <span className="text-xs font-medium text-subtext">Role name</span>
                 <input
@@ -2459,7 +2489,8 @@ export function AdminPanelClient() {
                   </label>
                 ))}
               </div>
-              <div className="flex justify-end gap-3 pt-2">
+              </div>
+              <div className="flex shrink-0 justify-end gap-3 border-t border-ring bg-card px-6 py-4">
                 <button
                   type="button"
                   onClick={() => setEditingRole(null)}
@@ -2500,10 +2531,16 @@ export function AdminPanelClient() {
               </div>
             </div>
             <form
-              className="p-6 space-y-4"
+              key={editingUser.id}
+              className="flex flex-col"
               onSubmit={async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
+                const newPwd = String(formData.get("newPassword") ?? "").trim();
+                if (newPwd.length > 0 && newPwd.length < 6) {
+                  toast.error("New password must be at least 6 characters");
+                  return;
+                }
                 const data: Record<string, unknown> = {
                   id: editingUser.id,
                   username: formData.get("username"),
@@ -2512,10 +2549,19 @@ export function AdminPanelClient() {
                   country: formData.get("country"),
                   withdrawBalance: formData.get("withdrawBalance"),
                   usdtBalance: formData.get("usdtBalance"),
-                  status: formData.get("status"),
                   securityCode: formData.get("securityCode"),
                   permanentWithdrawAddress: formData.get("permanentWithdrawAddress"),
                 };
+                if (editingUser.status === "admin") {
+                  data.status = "admin";
+                } else if (editUserAccountStatus === "blocked") {
+                  data.status = "blocked";
+                } else {
+                  data.status = editUserWithdrawalAccess === "suspend" ? "withdraw_suspend" : "active";
+                }
+                if (newPwd.length > 0) {
+                  data.newPassword = newPwd;
+                }
                 if (adminFullAccess) {
                   const ar = formData.get("adminRoleId");
                   data.adminRoleId = ar === "" || ar == null ? null : String(ar);
@@ -2539,6 +2585,7 @@ export function AdminPanelClient() {
                 }
               }}
             >
+              <div className="custom-scrollbar max-h-[min(70vh,calc(90vh-11rem))] overflow-y-auto overflow-x-hidden px-6 py-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="text-xs font-medium text-subtext">Username</span>
@@ -2579,8 +2626,14 @@ export function AdminPanelClient() {
                     name="usdtBalance"
                     type="number"
                     step="0.01"
+                    readOnly={!adminFullAccess}
                     defaultValue={editingUser.usdtBalance || 0}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    className={
+                      "mt-1 block w-full rounded-2xl px-4 py-2 text-sm ring-1 ring-ring outline-none " +
+                      (adminFullAccess
+                        ? "bg-background text-foreground focus:ring-2 focus:ring-primary/30"
+                        : "cursor-not-allowed bg-muted/60 text-foreground")
+                    }
                   />
                 </label>
                 <label className="block">
@@ -2589,10 +2642,21 @@ export function AdminPanelClient() {
                     name="withdrawBalance"
                     type="number"
                     step="0.01"
+                    readOnly={!adminFullAccess}
                     defaultValue={editingUser.withdrawBalance || 0}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    className={
+                      "mt-1 block w-full rounded-2xl px-4 py-2 text-sm ring-1 ring-ring outline-none " +
+                      (adminFullAccess
+                        ? "bg-background text-foreground focus:ring-2 focus:ring-primary/30"
+                        : "cursor-not-allowed bg-muted/60 text-foreground")
+                    }
                   />
                 </label>
+                {!adminFullAccess ? (
+                  <p className="text-[11px] text-subtext sm:col-span-2">
+                    Balance ($) and Withdraw wallet ($) are view only for role staff — only full admin can change them.
+                  </p>
+                ) : null}
                 <label className="block">
                   <span className="text-xs font-medium text-subtext">Withdrawal Address (USDT BEP20)</span>
                   <input
@@ -2610,19 +2674,69 @@ export function AdminPanelClient() {
                     className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
                   />
                 </label>
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-subtext">Status</span>
-                  <select
-                    name="status"
-                    defaultValue={editingUser.status}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
+                <div className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-subtext">New password (optional)</span>
+                  <div className="relative mt-1">
+                    <input
+                      name="newPassword"
+                      type={showEditUserNewPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder="Leave blank to keep current password"
+                      className="w-full rounded-2xl bg-background py-2 pl-4 pr-12 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditUserNewPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-subtext transition hover:text-foreground"
+                      aria-label={showEditUserNewPassword ? "Hide new password" : "Show new password"}
+                    >
+                      {showEditUserNewPassword ? <FaEyeSlash className="h-4 w-4" /> : <FaEye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                {editingUser.status === "admin" ? (
+                  <div className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-subtext">Status</span>
+                    <p className="mt-1 rounded-2xl bg-muted/40 px-4 py-2.5 text-sm text-foreground ring-1 ring-ring">
+                      Admin — staff accounts are managed from the Roles tab; status is not changed here.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-subtext">Status</span>
+                      <select
+                        value={editUserAccountStatus}
+                        onChange={(e) => setEditUserAccountStatus(e.target.value as "active" | "blocked")}
+                        className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                      >
+                        <option value="active">Active</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+                      {editingUser.status === "inactive" ? (
+                        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                          This user is currently inactive. Saving with Active will activate them (same as the Activate button).
+                        </p>
+                      ) : null}
+                    </label>
+                    {editUserAccountStatus === "active" ? (
+                      <label className="block sm:col-span-2">
+                        <span className="text-xs font-medium text-subtext">Withdrawal</span>
+                        <select
+                          value={editUserWithdrawalAccess}
+                          onChange={(e) => setEditUserWithdrawalAccess(e.target.value as "active" | "suspend")}
+                          className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                        >
+                          <option value="active">Withdraw active</option>
+                          <option value="suspend">Withdrawal suspend</option>
+                        </select>
+                        <p className="mt-1 text-[11px] text-subtext">
+                          Withdraw active: user can request withdrawals. Withdrawal suspend: withdrawals locked (same as before).
+                        </p>
+                      </label>
+                    ) : null}
+                  </>
+                )}
                 {adminFullAccess && editingUser.status === "admin" ? (
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-subtext">Admin role (restrict panel sections)</span>
@@ -2641,7 +2755,8 @@ export function AdminPanelClient() {
                   </label>
                 ) : null}
               </div>
-              <div className="mt-6 flex items-center justify-end gap-3">
+              </div>
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-ring bg-card px-6 py-4">
                 <button
                   type="button"
                   onClick={() => setEditingUser(null)}

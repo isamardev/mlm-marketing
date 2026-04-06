@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getUserApiContext } from "@/lib/user-api-auth";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
         SELECT u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", u."createdAt", t.depth + 1 AS depth
         FROM "User" u
         JOIN team t ON u."referredById" = t.id
-        WHERE t.depth < 19
+        WHERE t.depth < ${TREE_QUERY_MAX_DEPTH}
       ),
       first_deposits AS (
         SELECT "userId", MIN("createdAt") AS "firstDepositAt"
@@ -74,6 +75,7 @@ export async function GET(req: Request) {
 
     const nodes = descendants.map((n) => ({
       ...n,
+      depth: Number(n.depth),
       verified: Number(n.verified) === 1,
     }));
 

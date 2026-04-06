@@ -1,5 +1,5 @@
 /** Minimum USDT amount for withdrawal requests and P2P transfers. */
-export const MIN_WITHDRAW_OR_P2P_USDT = 5;
+export const MIN_WITHDRAW_OR_P2P_USDT = 3;
 
 /** Percentage deducted from the requested withdrawal amount before payout. */
 export const WITHDRAW_FEE_PERCENT = 10;

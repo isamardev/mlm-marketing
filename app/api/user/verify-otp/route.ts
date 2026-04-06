@@ -108,7 +108,7 @@ export async function POST(req: Request) {
       const finalRefCode = await allocateRefCode();
 
       await db.$transaction(async (tx) => {
-        const newUser = await tx.user.create({
+        await tx.user.create({
           data: {
             username: reg.username,
             country: reg.country,

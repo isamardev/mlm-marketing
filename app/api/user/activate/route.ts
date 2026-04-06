@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { onNewMemberRegistered } from "@/lib/team-withdraw-activity";
 import { runActivationPayoutEngine } from "@/lib/mlm-logic";
 import { getUserApiContext } from "@/lib/user-api-auth";
 import { getUserMainAndUsdtBalance } from "@/lib/user-balances";
+import { isActivatedMemberStatus } from "@/lib/user-status";
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (user.status === "active" || user.status === "admin") {
+    if (isActivatedMemberStatus(user.status)) {
       return NextResponse.json({ error: "Account is already active" }, { status: 400 });
     }
 
@@ -48,6 +50,13 @@ export async function POST(req: Request) {
       activationAmount: 10,
       note: "Account activation fee",
     });
+
+    await db.user.update({
+      where: { id: userId },
+      data: { lastDownlineActivityAt: new Date() },
+    });
+
+    await onNewMemberRegistered(db, userId);
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

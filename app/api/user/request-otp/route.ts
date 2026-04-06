@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 import { isEmailConfigured, sendOtpEmail } from "@/lib/email";
+import { sendRegistrationOtp } from "@/lib/registration-otp";
 
 const schema = z.object({
   email: z.string().email().optional(),
@@ -27,15 +28,27 @@ export async function POST(req: Request) {
     }
     const storedPurpose = parsed.data.purpose === "password_reset" ? "withdrawal" : parsed.data.purpose;
 
+    if (parsed.data.purpose === "registration") {
+      const regResult = await sendRegistrationOtp(email);
+      if (!regResult.ok) {
+        const status =
+          regResult.error === "Please sign up first"
+            ? 404
+            : regResult.error === "Account already exists. Please login."
+              ? 400
+              : regResult.error === "Email service is not configured"
+                ? 500
+                : 400;
+        return NextResponse.json({ error: regResult.error }, { status });
+      }
+      return NextResponse.json({
+        success: true,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      });
+    }
+
     const db = getDb();
     const user = await db.user.findUnique({ where: { email }, select: { id: true } });
-    
-    if (parsed.data.purpose === "registration") {
-      const pendingUser = await db.pendingUser.findUnique({ where: { email }, select: { id: true } });
-      if (!pendingUser && !user) {
-        return NextResponse.json({ error: "Please sign up first" }, { status: 404 });
-      }
-    }
 
     if (!user && parsed.data.purpose === "password_reset") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

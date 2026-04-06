@@ -38,6 +38,12 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
+    if (user.status === "withdraw_suspend") {
+      return NextResponse.json(
+        { error: "Withdrawals are suspended. Please contact customer support." },
+        { status: 403 },
+      );
+    }
 
     let permanentWithdrawAddress = (user as any).permanentWithdrawAddress;
     if (permanentWithdrawAddress === undefined) {

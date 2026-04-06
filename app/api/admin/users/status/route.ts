@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
+import { runActivationPayoutEngine } from "@/lib/mlm-logic";
+import { MANUAL_SUSPEND_SOURCE } from "@/lib/team-withdraw-activity";
 
 const schema = z.object({
   id: z.string().min(6),
-  status: z.enum(["active", "inactive", "blocked"]),
+  status: z.enum(["active", "inactive", "blocked", "withdraw_suspend"]),
 });
 
 export async function PATCH(req: Request) {
@@ -25,9 +27,44 @@ export async function PATCH(req: Request) {
     if (target.status === "admin") {
       return NextResponse.json({ error: "Cannot change admin status" }, { status: 400 });
     }
+
+    if (parsed.data.status === "active" && target.status === "active") {
+      return NextResponse.json({ success: true, user: target });
+    }
+
+    if (parsed.data.status === "active" && target.status !== "active") {
+      if (target.status === "inactive") {
+        await runActivationPayoutEngine({
+          sourceUserId: parsed.data.id,
+          activationAmount: 10,
+          note: "Admin activation",
+          skipUserDeduction: true,
+        });
+        await db.user.update({
+          where: { id: parsed.data.id },
+          data: { lastDownlineActivityAt: new Date(), withdrawSuspendSource: null },
+        });
+      } else {
+        await db.user.update({
+          where: { id: parsed.data.id },
+          data: { status: "active", withdrawSuspendSource: null },
+        });
+      }
+      const updated = await db.user.findUnique({
+        where: { id: parsed.data.id },
+        select: { id: true, status: true },
+      });
+      return NextResponse.json({ success: true, user: updated });
+    }
+
+    const st = parsed.data.status;
     const updated = await db.user.update({
       where: { id: parsed.data.id },
-      data: { status: parsed.data.status },
+      data: {
+        status: st,
+        withdrawSuspendSource:
+          st === "withdraw_suspend" ? MANUAL_SUSPEND_SOURCE : null,
+      },
       select: { id: true, status: true },
     });
     return NextResponse.json({ success: true, user: updated });

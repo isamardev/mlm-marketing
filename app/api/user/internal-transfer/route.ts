@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     let user: any = null;
     try {
       const rows: any[] = await db.$queryRawUnsafe(
-        `SELECT id, balance, "withdrawBalance", "usdtBalance", "securityCode" FROM "User" WHERE id = $1`,
+        `SELECT id, balance, "withdrawBalance", "usdtBalance", "securityCode", status FROM "User" WHERE id = $1`,
         userId
       );
       if (rows && rows.length > 0) {
@@ -41,12 +41,20 @@ export async function POST(req: Request) {
     } catch (e) {
       user = await db.user.findUnique({
         where: { id: userId },
-        select: { id: true, balance: true, securityCode: true }
+        select: { id: true, balance: true, securityCode: true, status: true },
       });
     }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const userStatus = String((user as any).status ?? "");
+    if (userStatus === "withdraw_suspend" && source === "withdraw") {
+      return NextResponse.json(
+        { error: "Withdrawals are suspended. Please contact customer support." },
+        { status: 403 },
+      );
     }
 
     if (user.securityCode !== securityCode.trim()) {

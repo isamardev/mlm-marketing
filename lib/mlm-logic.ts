@@ -14,6 +14,30 @@ type PayoutResult = {
   amount: number;
 };
 
+/**
+ * Sponsor chain from depositor upward: [0]=direct sponsor (L1), [1]=their sponsor (L2), …
+ * DB is single-parent (`referredById`): each user has one upline path. “Legs” are separate subtrees
+ * under each user; a deposit only travels up the **one path** that contains the depositor — so each
+ * upline is paid only if they are within **20 generations** on that path (L1…L20). No pay to 21st+ upline.
+ */
+async function loadSponsorChainIds(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["$transaction"]>[0]>[0],
+  sourceReferredById: string | null,
+): Promise<string[]> {
+  const chain: string[] = [];
+  let currentId: string | null = sourceReferredById;
+  while (currentId) {
+    const parent = await tx.user.findUnique({
+      where: { id: currentId },
+      select: { id: true, referredById: true },
+    });
+    if (!parent) break;
+    chain.push(parent.id);
+    currentId = parent.referredById ?? null;
+  }
+  return chain;
+}
+
 export const MLM_SETTINGS_KEY = "mlm-level-percentages";
 export const DEFAULT_LEVEL_PERCENTAGES = [
   10, 5, 4, 3, 2, 2, 1.5, 1.5, 1, 1, 0.8, 0.8, 0.6, 0.6, 0.5, 0.5, 0.4, 0.4, 0.3, 0.3,
@@ -66,13 +90,14 @@ export async function runMlmPayoutEngine(params: {
       throw new Error("Source user not found");
     }
 
-    let currentParentId = sourceUser.referredById;
+    const chain = await loadSponsorChainIds(tx, sourceUser.referredById);
 
     for (let level = 1; level <= 20; level += 1) {
-      if (!currentParentId) break;
+      const idx = level - 1;
+      if (idx >= chain.length) break;
       const parentUser = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { id: true, referredById: true },
+        where: { id: chain[idx] },
+        select: { id: true },
       });
       if (!parentUser) break;
 
@@ -103,8 +128,6 @@ export async function runMlmPayoutEngine(params: {
         });
         payouts.push({ level, beneficiaryUserId: parentUser.id, amount: amountNum });
       }
-
-      currentParentId = parentUser.referredById ?? null;
     }
   }, INTERACTIVE_TX_OPTIONS);
 
@@ -115,49 +138,106 @@ export async function runActivationPayoutEngine(params: {
   sourceUserId: string;
   activationAmount: number;
   note?: string;
+  /**
+   * Admin panel activation: no debit from member wallet; same $10 → L1–L20 ($0.50 each) + remainder to admin.
+   * Confirmed Deposit row is created so admin “total deposits” matches other flows that log to Deposit.
+   * Row lock + activation row prevent double commission on double-click. If activation already exists (wallet or admin),
+   * only status is set to active — no second commission.
+   */
+  skipUserDeduction?: boolean;
 }) {
   const db = getDb();
   const sourceUserId = params.sourceUserId;
   const activationAmount = params.activationAmount;
   const note = params.note ?? "Account activation";
+  const skipUserDeduction = params.skipUserDeduction === true;
   const perLevel = 0.5;
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
 
   const payouts: PayoutResult[] = [];
+  let reactivationOnly = false;
 
   await db.$transaction(async (tx) => {
-    // 1. Deduct activation from main balance first, then USDT wallet (same $10 total)
-    const { main: mainBal, usdt: usdtBal } = await getUserMainAndUsdtBalance(tx, sourceUserId);
-    const total = Number((mainBal + usdtBal).toFixed(2));
-    if (total < activationAmount) {
-      throw new Error("Insufficient balance for activation");
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT id FROM "User" WHERE id = ${sourceUserId} FOR UPDATE`,
+    );
+    if (!locked?.length) {
+      throw new Error("User not found");
     }
-    const fromMain = Math.min(mainBal, activationAmount);
-    const fromUsdt = Number((activationAmount - fromMain).toFixed(2));
 
-    if (fromMain > 0 && fromUsdt > 0) {
-      await tx.$executeRawUnsafe(
-        `UPDATE "User" SET balance = COALESCE(balance,0) - $1, "usdtBalance" = COALESCE("usdtBalance",0) - $2 WHERE id = $3`,
-        fromMain,
-        fromUsdt,
-        sourceUserId,
-      );
-      await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
-    } else if (fromMain > 0) {
+    const existingActivation = await tx.transaction.findFirst({
+      where: {
+        userId: sourceUserId,
+        sourceUserId: sourceUserId,
+        type: "activation",
+      },
+      select: { id: true },
+    });
+
+    const userSnap = await tx.user.findUnique({
+      where: { id: sourceUserId },
+      select: { id: true, status: true },
+    });
+    if (!userSnap) {
+      throw new Error("User not found");
+    }
+
+    if (skipUserDeduction) {
+      if (existingActivation) {
+        await tx.user.update({
+          where: { id: sourceUserId },
+          data: { status: "active" },
+        });
+        reactivationOnly = true;
+        return;
+      }
+      if (userSnap.status === "active") {
+        reactivationOnly = true;
+        return;
+      }
+    } else if (existingActivation) {
+      throw new Error("Account already activated");
+    }
+
+    if (!skipUserDeduction) {
+      // 1. Deduct activation from main balance first, then USDT wallet (same $10 total)
+      const { main: mainBal, usdt: usdtBal } = await getUserMainAndUsdtBalance(tx, sourceUserId);
+      const total = Number((mainBal + usdtBal).toFixed(2));
+      if (total < activationAmount) {
+        throw new Error("Insufficient balance for activation");
+      }
+      const fromMain = Math.min(mainBal, activationAmount);
+      const fromUsdt = Number((activationAmount - fromMain).toFixed(2));
+
+      if (fromMain > 0 && fromUsdt > 0) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "User" SET balance = COALESCE(balance,0) - $1, "usdtBalance" = COALESCE("usdtBalance",0) - $2 WHERE id = $3`,
+          fromMain,
+          fromUsdt,
+          sourceUserId,
+        );
+        await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
+      } else if (fromMain > 0) {
+        await tx.user.update({
+          where: { id: sourceUserId },
+          data: {
+            balance: { decrement: new Prisma.Decimal(fromMain.toFixed(2)) },
+            status: "active",
+          },
+        });
+      } else if (fromUsdt > 0) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance",0) - $1 WHERE id = $2`,
+          fromUsdt,
+          sourceUserId,
+        );
+        await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
+      }
+    } else {
       await tx.user.update({
         where: { id: sourceUserId },
-        data: {
-          balance: { decrement: new Prisma.Decimal(fromMain.toFixed(2)) },
-          status: "active",
-        },
+        data: { status: "active" },
       });
-    } else if (fromUsdt > 0) {
-      await tx.$executeRawUnsafe(
-        `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance",0) - $1 WHERE id = $2`,
-        fromUsdt,
-        sourceUserId,
-      );
-      await tx.user.update({ where: { id: sourceUserId }, data: { status: "active" } });
     }
 
     const user = await tx.user.findUnique({
@@ -180,6 +260,20 @@ export async function runActivationPayoutEngine(params: {
       },
     });
 
+    if (skipUserDeduction) {
+      const depositTxHash = `admin-panel-activation-${sourceUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+      await tx.deposit.create({
+        data: {
+          userId: sourceUserId,
+          chain: "BSC",
+          txHash: depositTxHash,
+          amount: new Prisma.Decimal(activationAmount.toFixed(2)),
+          status: "confirmed",
+          verifiedAt: new Date(),
+        },
+      });
+    }
+
     const adminByStatus = await tx.user.findFirst({
       where: { status: "admin" },
       select: { id: true, email: true, username: true },
@@ -192,13 +286,15 @@ export async function runActivationPayoutEngine(params: {
       throw new Error("Admin user not found");
     }
 
-    let currentParentId = user.referredById;
+    const activationChain = await loadSponsorChainIds(tx, user.referredById);
     let remainingAmount = Number(activationAmount.toFixed(2));
 
-    for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
+    for (let level = 1; level <= 20 && remainingAmount >= perLevel; level += 1) {
+      const idx = level - 1;
+      if (idx >= activationChain.length) break;
       const beneficiary = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { id: true, referredById: true },
+        where: { id: activationChain[idx] },
+        select: { id: true },
       });
       if (!beneficiary) break;
 
@@ -226,8 +322,6 @@ export async function runActivationPayoutEngine(params: {
       });
       payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
       remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
-
-      currentParentId = beneficiary.referredById ?? null;
     }
 
     if (remainingAmount > 0) {
@@ -256,7 +350,7 @@ export async function runActivationPayoutEngine(params: {
     }
   }, INTERACTIVE_TX_OPTIONS);
 
-  return { sourceUserId, activationAmount, payouts };
+  return { sourceUserId, activationAmount, payouts, reactivationOnly };
 }
 
 export async function runFixedPayoutEngine(params: {
@@ -305,13 +399,15 @@ export async function runFixedPayoutEngine(params: {
       throw new Error("Source user not found");
     }
 
-    let currentParentId = sourceUser.referredById;
+    const fixedChain = await loadSponsorChainIds(tx, sourceUser.referredById);
     let remainingAmount = Number(depositAmount.toFixed(2));
 
-    for (let level = 1; level <= 20 && currentParentId && remainingAmount >= perLevel; level += 1) {
+    for (let level = 1; level <= 20 && remainingAmount >= perLevel; level += 1) {
+      const idx = level - 1;
+      if (idx >= fixedChain.length) break;
       const beneficiary = await tx.user.findUnique({
-        where: { id: currentParentId },
-        select: { id: true, referredById: true },
+        where: { id: fixedChain[idx] },
+        select: { id: true },
       });
       if (!beneficiary) break;
 
@@ -339,8 +435,6 @@ export async function runFixedPayoutEngine(params: {
       });
       payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
       remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
-
-      currentParentId = beneficiary.referredById ?? null;
     }
 
     if (remainingAmount > 0) {

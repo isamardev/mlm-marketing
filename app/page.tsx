@@ -5,6 +5,7 @@ import { FaUser, FaEye, FaEyeSlash } from "react-icons/fa";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
+import { markSessionTabActive } from "@/lib/session-tab";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
 const COUNTRIES = [
@@ -215,7 +216,8 @@ function HomeContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [signupStep, setSignupStep] = useState<"form" | "otp">("form");
   const [forgotStep, setForgotStep] = useState<"email" | "otp" | "reset">("email");
-  const [forgotDevOtp, setForgotDevOtp] = useState("");
+  const [signupResendCooldown, setSignupResendCooldown] = useState(0);
+  const authFormRef = useRef<HTMLFormElement>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [toastMessage, setToastMessage] = useState("");
@@ -323,7 +325,7 @@ function HomeContent() {
       } finally {
         setReferrerLookupLoading(false);
       }
-    }, 300);
+    }, 150);
 
     return () => window.clearTimeout(timer);
   }, [authMode, hasRefParam, referrerCode]);
@@ -350,11 +352,20 @@ function HomeContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [authOpen]);
 
+  useEffect(() => {
+    if (signupResendCooldown <= 0) return;
+    const t = window.setInterval(() => {
+      setSignupResendCooldown((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [signupResendCooldown]);
+
   const openLogin = () => {
     setAuthMessage("");
     setAuthMode("login");
     setSignupStep("form");
     setOtpCode("");
+    setSignupResendCooldown(0);
     setAuthOpen(true);
   };
 
@@ -363,6 +374,7 @@ function HomeContent() {
     setAuthMode("signup");
     setSignupStep("form");
     setOtpCode("");
+    setSignupResendCooldown(0);
     setAuthOpen(true);
   };
 
@@ -775,6 +787,7 @@ function HomeContent() {
             </div>
 
             <form
+              ref={authFormRef}
               className="mt-6 grid gap-4"
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -807,6 +820,7 @@ function HomeContent() {
                       setAuthMessage("Invalid credentials");
                       return;
                     }
+                    markSessionTabActive();
                     setAuthOpen(false);
                     router.push("/dashboard");
                     return;
@@ -826,7 +840,6 @@ function HomeContent() {
                         return;
                       }
                       setForgotStep("otp");
-                      setForgotDevOtp(otpData?.devOtp ?? "");
                       setAuthMessage("OTP sent to your email. Please enter the code.");
                       return;
                     }
@@ -870,7 +883,6 @@ function HomeContent() {
                       setAuthMessage("Password reset successfully. You can now login with your new password.");
                       setAuthMode("login");
                       setForgotStep("email");
-                      setForgotDevOtp("");
                       setNewPassword("");
                       setConfirmNewPassword("");
                       setOtpCode("");
@@ -900,6 +912,9 @@ function HomeContent() {
                         setAuthMessage("Please enter a valid referral code");
                         return;
                       }
+                      setOtpCode("");
+                      setSignupStep("otp");
+                      setAuthMessage("Creating your account and sending the code…");
                       const phoneFull = `${countryCode} ${nationalNumber}`.trim();
                       const regRes = await fetch("/api/auth/register", {
                         method: "POST",
@@ -916,7 +931,13 @@ function HomeContent() {
                       });
                       const regData = (await regRes.json()) as any;
                       if (!regRes.ok) {
+                        setSignupStep("form");
                         setAuthMessage(typeof regData?.error === "string" ? regData.error : "Signup failed");
+                        return;
+                      }
+                      if (regData?.otpSent === true) {
+                        setSignupResendCooldown(60);
+                        setAuthMessage("OTP sent to your email. Enter the code below.");
                         return;
                       }
                       const otpRes = await fetch("/api/user/request-otp", {
@@ -926,11 +947,12 @@ function HomeContent() {
                       });
                       const otpData = (await otpRes.json()) as any;
                       if (!otpRes.ok) {
+                        setSignupStep("form");
                         setAuthMessage(typeof otpData?.error === "string" ? otpData.error : "Failed to send OTP");
                         return;
                       }
-                      setSignupStep("otp");
-                      setAuthMessage("OTP sent to your email. Please enter the code to complete signup.");
+                      setSignupResendCooldown(60);
+                      setAuthMessage("OTP sent to your email. Enter the code below.");
                       return;
                     }
 
@@ -950,6 +972,8 @@ function HomeContent() {
                       setAuthMessage("Account created, but login failed");
                       return;
                     }
+                    markSessionTabActive();
+                    setSignupResendCooldown(0);
                     setAuthOpen(false);
                     router.push("/dashboard");
                   }
@@ -1134,17 +1158,56 @@ function HomeContent() {
                   <input
                     required
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    disabled={authLoading}
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      setOtpCode(v);
+                      if (authLoading) return;
+                      const otpStep =
+                        (authMode === "signup" && signupStep === "otp") ||
+                        (authMode === "forgot" && forgotStep === "otp");
+                      if (v.length === 6 && otpStep) {
+                        window.setTimeout(() => authFormRef.current?.requestSubmit(), 0);
+                      }
+                    }}
+                    className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
                     placeholder="123456"
                   />
                 </label>
               ) : null}
-              {authMode === "forgot" && forgotStep === "otp" && forgotDevOtp ? (
-                <div className="rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
-                  Demo OTP: {forgotDevOtp}
-                </div>
+              {authMode === "signup" && signupStep === "otp" ? (
+                <button
+                  type="button"
+                  disabled={authLoading || signupResendCooldown > 0}
+                  onClick={async () => {
+                    if (!email.trim() || signupResendCooldown > 0) return;
+                    setAuthMessage("");
+                    setAuthLoading(true);
+                    try {
+                      const otpRes = await fetch("/api/user/request-otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, purpose: "registration" }),
+                      });
+                      const otpData = (await otpRes.json()) as any;
+                      if (!otpRes.ok) {
+                        setAuthMessage(typeof otpData?.error === "string" ? otpData.error : "Failed to send OTP");
+                        return;
+                      }
+                      setSignupResendCooldown(60);
+                      setAuthMessage("OTP sent again. Check your email.");
+                    } finally {
+                      setAuthLoading(false);
+                    }
+                  }}
+                  className="w-full rounded-2xl bg-muted py-2.5 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-muted/80 disabled:opacity-50"
+                >
+                  {signupResendCooldown > 0 ? `Resend OTP in ${signupResendCooldown}s` : "Resend OTP"}
+                </button>
               ) : null}
 
               {authMode === "forgot" && forgotStep === "reset" ? (
@@ -1220,7 +1283,6 @@ function HomeContent() {
                           setAuthMessage("");
                           setAuthMode("forgot");
                           setForgotStep("email");
-                          setForgotDevOtp("");
                           setOtpCode("");
                           setNewPassword("");
                           setConfirmNewPassword("");

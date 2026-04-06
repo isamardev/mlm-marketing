@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { requireAdminSection, requireSuperAdmin } from "@/lib/admin-api-guard";
+import { runActivationPayoutEngine } from "@/lib/mlm-logic";
+import { MANUAL_SUSPEND_SOURCE } from "@/lib/team-withdraw-activity";
 
 function num(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(",", "."));
@@ -24,6 +27,7 @@ export async function PATCH(req: Request) {
   try {
     const gate = await requireAdminSection("users");
     if (!gate.ok) return gate.response;
+    const canEditBalances = gate.fullAccess === true;
 
     const body = await req.json();
     const {
@@ -39,6 +43,7 @@ export async function PATCH(req: Request) {
       securityCode,
       permanentWithdrawAddress,
       adminRoleId,
+      newPassword,
     } = body;
 
     if (!id || typeof id !== "string") {
@@ -67,18 +72,37 @@ export async function PATCH(req: Request) {
     if (country !== undefined && country !== null) {
       prismaData.country = String(country);
     }
-    if (balance !== undefined && balance !== null) {
+    if (canEditBalances && balance !== undefined && balance !== null) {
       prismaData.balance = new Prisma.Decimal(num(balance).toFixed(2));
     }
-    if (withdrawBalance !== undefined && withdrawBalance !== null) {
+    if (canEditBalances && withdrawBalance !== undefined && withdrawBalance !== null) {
       prismaData.withdrawBalance = new Prisma.Decimal(num(withdrawBalance).toFixed(2));
     }
     if (status !== undefined && status !== null) {
       prismaData.status = status;
+      const st = String(status);
+      if (st === "withdraw_suspend") {
+        prismaData.withdrawSuspendSource = MANUAL_SUSPEND_SOURCE;
+      } else {
+        prismaData.withdrawSuspendSource = null;
+      }
     }
     if (securityCode !== undefined) {
       const s = String(securityCode ?? "").trim();
       prismaData.securityCode = s.length ? s : null;
+    }
+
+    const np = typeof newPassword === "string" ? newPassword.trim() : "";
+    if (np.length > 0) {
+      if (np.length < 6) {
+        return NextResponse.json({ error: "New password must be at least 6 characters" }, { status: 400 });
+      }
+      prismaData.passwordHash = await bcrypt.hash(np, 12);
+      if (user.adminRoleId || user.status === "admin") {
+        prismaData.staffPasswordPlain = np;
+      } else {
+        prismaData.staffPasswordPlain = null;
+      }
     }
 
     if (adminRoleId !== undefined) {
@@ -96,19 +120,37 @@ export async function PATCH(req: Request) {
       }
     }
 
-    const newUsdt = usdtBalance !== undefined ? num(usdtBalance) : oldUsdt;
-    const usdtDelta = usdtBalance !== undefined ? newUsdt - oldUsdt : 0;
+    const newUsdt =
+      usdtBalance !== undefined && canEditBalances ? num(usdtBalance) : oldUsdt;
+    const usdtDelta =
+      usdtBalance !== undefined && canEditBalances ? newUsdt - oldUsdt : 0;
 
     const extraClauses: string[] = [];
     const extraVals: unknown[] = [];
     let p = 1;
-    if (usdtBalance !== undefined) {
+    if (usdtBalance !== undefined && canEditBalances) {
       extraClauses.push(`"usdtBalance" = $${p++}`);
       extraVals.push(newUsdt);
     }
     if (permanentWithdrawAddress !== undefined) {
       extraClauses.push(`"permanentWithdrawAddress" = $${p++}`);
       extraVals.push(String(permanentWithdrawAddress ?? "").trim());
+    }
+
+    const willActivate =
+      status !== undefined &&
+      status !== null &&
+      String(status) === "active" &&
+      user.status === "inactive";
+
+    if (willActivate) {
+      await runActivationPayoutEngine({
+        sourceUserId: id,
+        activationAmount: 10,
+        note: "Admin activation",
+        skipUserDeduction: true,
+      });
+      delete prismaData.status;
     }
 
     await db.$transaction(async (tx) => {
@@ -128,7 +170,7 @@ export async function PATCH(req: Request) {
       }
 
       // Total Deposits on admin dashboard = sum of confirmed Deposit rows; manual Balance (USDT) credits must log here too
-      if (usdtBalance !== undefined && usdtDelta > 0.0001) {
+      if (canEditBalances && usdtBalance !== undefined && usdtDelta > 0.0001) {
         const txHash = `admin-panel-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
         await tx.deposit.create({
           data: {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { sendRegistrationOtp } from "@/lib/registration-otp";
 
 const registerSchema = z.object({
   fullName: z.string().min(2).max(60),
@@ -66,16 +67,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `${field} already exists` }, { status: 409 });
     }
 
-    const pendingAlready = await db.pendingUser.findFirst({
-      where: {
-        OR: [{ email: normalizedEmail }, { phone: payload.phone.trim() }],
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true, email: true },
+    const phoneTrim = payload.phone.trim();
+    const pendingPhoneOther = await db.pendingUser.findFirst({
+      where: { phone: phoneTrim, NOT: { email: normalizedEmail } },
+      select: { id: true },
     });
-    if (pendingAlready) {
-      const field = pendingAlready.email === normalizedEmail ? "Email" : "Phone number";
-      return NextResponse.json({ error: `${field} already exists in pending registrations` }, { status: 409 });
+    if (pendingPhoneOther) {
+      return NextResponse.json({ error: "Phone number already used in another pending registration" }, { status: 409 });
     }
 
     const userCount = await db.user.count();
@@ -201,9 +199,15 @@ export async function POST(req: Request) {
       },
     });
 
+    const otpResult = await sendRegistrationOtp(normalizedEmail);
+    if (!otpResult.ok) {
+      return NextResponse.json({ error: otpResult.error }, { status: 500 });
+    }
+
     return NextResponse.json(
       {
         success: true,
+        otpSent: true,
         user: {
           id: pendingUser.id,
           username: pendingUser.username,

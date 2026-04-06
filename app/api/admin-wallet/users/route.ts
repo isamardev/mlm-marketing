@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
 export async function GET() {
   try {
@@ -34,7 +35,7 @@ export async function GET() {
         SELECT d."rootId", c.id AS "nodeId", d.depth + 1
         FROM downline d
         JOIN "User" c ON c."referredById" = d."nodeId"
-        WHERE d.depth < 20
+        WHERE d.depth < ${TREE_QUERY_MAX_DEPTH}
       )
       SELECT
         u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", u.balance, u.status, u."createdAt",

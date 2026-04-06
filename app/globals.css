@@ -114,3 +114,13 @@ canvas {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--primary);
 }
+
+/* Read-only password in admin: hide browser reveal / eye where supported */
+.admin-password-mask::-ms-reveal {
+  display: none;
+}
+.admin-password-mask::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}

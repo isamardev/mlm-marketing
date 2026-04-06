@@ -8,6 +8,10 @@ import { toast } from "react-toastify";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
+import { isActivatedMemberStatus } from "@/lib/user-status";
+import { TEAM_INACTIVITY_DAYS } from "@/lib/team-withdraw-activity";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -192,6 +196,53 @@ function hasSavedBep20WithdrawAddress(profile: any): boolean {
   return BEP20_ADDRESS_RE.test(a);
 }
 
+function TeamWithdrawActivityTimer({ profile }: { profile: any }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const status = profile?.status;
+  if (status === "admin") return null;
+  if (!isActivatedMemberStatus(status)) return null;
+  if (status === "withdraw_suspend" && profile?.withdrawSuspendSource === "manual") return null;
+
+  const raw = profile?.lastDownlineActivityAt;
+  const startMs = raw ? new Date(raw).getTime() : NaN;
+  if (!Number.isFinite(startMs)) return null;
+
+  const deadlineMs = startMs + TEAM_INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
+  const msLeft = deadlineMs - Date.now();
+  const expired = msLeft <= 0;
+  const abs = Math.abs(msLeft);
+  const d = Math.floor(abs / 86400000);
+  const h = Math.floor((abs % 86400000) / 3600000);
+  const m = Math.floor((abs % 3600000) / 60000);
+  const s = Math.floor((abs % 60000) / 1000);
+
+  return (
+    <div className="mt-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs leading-relaxed text-foreground">
+      <div className="font-semibold text-cyan-800 dark:text-cyan-400">10-day team activity timer</div>
+      <p className="mt-1 text-subtext">
+        Within {TEAM_INACTIVITY_DAYS} days a downline member must <span className="font-medium text-foreground/90">activate their account</span> (activity counts up to 10 uplines). Signup alone does not refresh this timer. After the timer reaches zero, withdrawals may auto-suspend until activity refreshes.
+      </p>
+      {!expired ? (
+        <div className="mt-2 flex flex-wrap items-baseline gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-subtext">Time left</span>
+          <span className="font-mono text-lg font-bold tabular-nums text-foreground">
+            {d}d {String(h).padStart(2, "0")}h {String(m).padStart(2, "0")}m {String(s).padStart(2, "0")}s
+          </span>
+        </div>
+      ) : (
+        <div className="mt-2 rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] font-medium text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20">
+          Countdown finished. When a downline member activates, the activity window resets.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WithdrawSection({
   profile,
   onGoToWithdrawAddressSettings,
@@ -204,6 +255,8 @@ function WithdrawSection({
   const [securityCode, setSecurityCode] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
 
+  const withdrawSuspended = profile?.status === "withdraw_suspend";
+  const withdrawAutoTeamSuspend = profile?.withdrawSuspendSource === "auto_team_inactivity";
   const withdrawUnlocked = hasSavedBep20WithdrawAddress(profile);
 
   const withdrawGrossPreview = useMemo(() => {
@@ -219,7 +272,7 @@ function WithdrawSection({
   }, [profile?.permanentWithdrawAddress]);
 
   const onWithdraw = async () => {
-    if (!withdrawUnlocked) return;
+    if (withdrawSuspended || !withdrawUnlocked) return;
     setMsg("");
     try {
       const amt = Number(withdrawAmount);
@@ -279,7 +332,23 @@ function WithdrawSection({
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
       <div className="text-sm font-semibold">Withdraw Funds (demo)</div>
-      {!withdrawUnlocked ? (
+      <TeamWithdrawActivityTimer profile={profile} />
+      {withdrawSuspended ? (
+        <>
+          <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
+            <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
+            <p className="mt-2 text-xs text-subtext">
+              {withdrawAutoTeamSuspend
+                ? "No downline activation in the last 10 days (activity counts up to 10 upline levels when someone activates). Add a team member who completes activation — withdrawals unlock automatically."
+                : "Your withdrawal is suspended. Please contact customer support."}
+            </p>
+            <p className="mt-2 text-xs text-subtext">
+              Withdraw wallet balance:{" "}
+              <span className="font-semibold text-foreground">{toUSD(Number((profile as any)?.withdrawBalance ?? 0))}</span>
+            </p>
+          </div>
+        </>
+      ) : !withdrawUnlocked ? (
         <>
           <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
             <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
@@ -907,10 +976,28 @@ function MyProfileSection({
   );
 }
 
+/** Depth 0 = root (show "You"); tree depth from API; commissions cap at L20 in backend. */
+function formatUserTreeLevelLabel(depth: number) {
+  const d = Number(depth);
+  if (d === 0) return "You";
+  return `L${d}`;
+}
+
 function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (message: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(320); // Lower default for mobile
-  
+
+  const directCountByParentId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of nodes) {
+      const pid = n.referredById;
+      if (pid) {
+        m.set(pid, (m.get(pid) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [nodes]);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -932,17 +1019,22 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
   // Group nodes by depth
   const nodesByDepth = useMemo(() => {
     const grouped: Record<number, any[]> = {};
-    nodes.forEach(node => {
-      if (!grouped[node.depth]) {
-        grouped[node.depth] = [];
-      }
-      grouped[node.depth].push(node);
+    nodes.forEach((node) => {
+      const d = Number(node.depth);
+      if (!Number.isFinite(d)) return;
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(node);
     });
     return grouped;
   }, [nodes]);
 
   const depths = Object.keys(nodesByDepth).map(Number).sort((a, b) => a - b);
   const maxDepth = Math.max(...depths, 0);
+  const downlineNodes = useMemo(() => nodes.filter((n) => Number(n.depth) > 0), [nodes]);
+  const maxDownlineDepth = useMemo(
+    () => (downlineNodes.length ? Math.max(...downlineNodes.map((n) => Number(n.depth))) : 0),
+    [downlineNodes],
+  );
   
   const rowH = 84;
   const padY = 20;
@@ -1016,7 +1108,7 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
               key={`n-${depth}-${idx}`}
               className="absolute -translate-x-1/2 -translate-y-1/2"
               style={{ left: pt.x, top: pt.y }}
-              title={`${pt.node.username} - L${pt.node.depth}`}
+              title={`${pt.node.username} · ${formatUserTreeLevelLabel(pt.node.depth)}`}
             >
               <div className="flex flex-col items-center">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 ring-1 ring-ring">
@@ -1026,9 +1118,9 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
                   {pt.node.email === COMPANY_ADMIN_EMAIL ? "Admin" : pt.node.username}
                 </div>
                 <div className="text-[10px] text-subtext">
-                  L{pt.node.depth}
+                  {formatUserTreeLevelLabel(pt.node.depth)}
                 </div>
-                {(pt.node.email === COMPANY_ADMIN_EMAIL || pt.node.verified) ? (
+                {(directCountByParentId.get(pt.node.id) ?? 0) >= 2 ? null : (pt.node.email === COMPANY_ADMIN_EMAIL || pt.node.verified) ? (
                   <button
                     type="button"
                     onClick={async (e) => {
@@ -1066,10 +1158,10 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
         )}
       </div>
 
-      {maxDepth > 7 ? (
+      {maxDownlineDepth > 7 ? (
         <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
           <div className="text-xs text-subtext">
-            Showing {nodes.filter((n) => Number(n.depth) > 0).length} team members across {maxDepth + 1} levels
+            Showing {downlineNodes.length} team members across {maxDownlineDepth} downline levels (L1–L{maxDownlineDepth}; payouts L1–L20)
           </div>
         </div>
       ) : null}
@@ -1094,8 +1186,6 @@ function StatCard({
     </div>
   );
 }
-
-const IMPERSONATION_STORAGE_KEY = "user_impersonation_token";
 
 export default function UserDashboardPage() {
   const router = useRouter();
@@ -1134,7 +1224,7 @@ export default function UserDashboardPage() {
   const [activating, setActivating] = useState(false);
 
   const onActivate = async () => {
-    if (profile?.status === "active" || profile?.status === "admin") {
+    if (isActivatedMemberStatus(profile?.status)) {
       toast.info("Account is already active");
       return;
     }
@@ -1166,7 +1256,7 @@ export default function UserDashboardPage() {
   >("deposit");
   const [profileTab, setProfileTab] = useState<"profile" | "security" | "withdrawAddress">("profile");
   const [level, setLevel] = useState(6);
-  const maxLevel = 33;
+  const maxLevel = TREE_QUERY_MAX_DEPTH;
 
   const [profile, setProfile] = useState<any>(null);
   const [currentLevel, setCurrentLevel] = useState<number>(0);
@@ -1570,6 +1660,19 @@ export default function UserDashboardPage() {
     [teamNodes],
   );
 
+  /** Direct children per user in team tree — hide copy link when ≥2 (quota full). */
+  const teamDirectCountByParentId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!teamNodes) return m;
+    for (const n of teamNodes) {
+      const pid = n.referredById;
+      if (pid) {
+        m.set(pid, (m.get(pid) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [teamNodes]);
+
   const activeRow = networkRows[level - 1] ?? { level, count: 0 };
   const initials = useMemo(() => {
     const name = profile?.username ?? "";
@@ -1734,7 +1837,7 @@ export default function UserDashboardPage() {
                     <span>Wallet</span>
                     <span className={`transition-transform ${walletOpen ? "rotate-90" : ""}`}>›</span>
                   </button>
-                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${walletOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${walletOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"}`}>
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "deposit", label: "Deposit Funds" },
@@ -1774,7 +1877,7 @@ export default function UserDashboardPage() {
                     <span>My Profile</span>
                     <span className={`transition-transform ${profileOpen ? "rotate-90" : ""}`}>›</span>
                   </button>
-                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"}`}>
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "profile", label: "Update Profile" },
@@ -1802,7 +1905,9 @@ export default function UserDashboardPage() {
             </div>
 
             <div className="mt-6 rounded-3xl bg-card p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-              <div className="text-xs text-subtext">Referral Link</div>
+              <div className="text-xs text-subtext">
+                {referralGate?.state !== "unverified" && profile?.status !== "admin" && directReferrals >= 2 ? "User" : "Referral Link"}
+              </div>
               {referralGate?.state === "unverified" ? (
                 <>
                   <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
@@ -1816,6 +1921,13 @@ export default function UserDashboardPage() {
                     Verify to Unlock
                   </button>
                 </>
+              ) : profile?.status !== "admin" && directReferrals >= 2 ? (
+                <>
+                  <div className="mt-2 rounded-2xl bg-muted px-4 py-3 text-sm font-medium text-foreground ring-1 ring-ring">
+                    {profile?.username ?? "—"}
+                  </div>
+                  <p className="mt-2 text-xs text-subtext">2/2 direct referrals — invite more using your team members’ links below.</p>
+                </>
               ) : (
                 <>
                   <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
@@ -1824,11 +1936,6 @@ export default function UserDashboardPage() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (profile?.status !== "admin" && directReferrals >= 2) {
-                        setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
-                        setTimeout(() => setUiMessage(""), 3000);
-                        return;
-                      }
                       const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
                       try {
                         await navigator.clipboard.writeText(text);
@@ -1841,16 +1948,13 @@ export default function UserDashboardPage() {
                         setTimeout(() => setUiMessage(""), 1200);
                       }
                     }}
-                    disabled={profile?.status !== "admin" && directReferrals >= 2}
                     className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
-                      profile?.status !== "admin" && directReferrals >= 2 
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
-                        : linkCopied 
+                      linkCopied
                         ? "bg-green-500 text-white ring-green-500/20"
                         : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
                     }`}
                   >
-                    {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
+                    {linkCopied ? "Link Copied" : "Copy Link"}
                   </button>
                 </>
               )}
@@ -1867,7 +1971,9 @@ export default function UserDashboardPage() {
           
           <div className="lg:hidden">
             <div className="min-w-0 rounded-3xl bg-card p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-              <div className="text-xs text-subtext">Referral Link</div>
+              <div className="text-xs text-subtext">
+                {referralGate?.state !== "unverified" && profile?.status !== "admin" && directReferrals >= 2 ? "User" : "Referral Link"}
+              </div>
               {referralGate?.state === "unverified" ? (
                 <>
                   <div className="mt-2 break-all rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
@@ -1882,6 +1988,13 @@ export default function UserDashboardPage() {
                     Verify to Unlock
                   </button>
                 </>
+              ) : profile?.status !== "admin" && directReferrals >= 2 ? (
+                <>
+                  <div className="mt-2 rounded-2xl bg-muted px-4 py-3 text-sm font-medium text-foreground ring-1 ring-ring">
+                    {profile?.username ?? "—"}
+                  </div>
+                  <p className="mt-2 text-xs text-subtext">2/2 direct referrals — invite more using your team members’ links below.</p>
+                </>
               ) : (
                 <>
                   <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
@@ -1890,11 +2003,6 @@ export default function UserDashboardPage() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (profile?.status !== "admin" && directReferrals >= 2) {
-                        setUiMessage("You can add only 2 direct referrals. To invite further, copy your team members’ referral links.");
-                        setTimeout(() => setUiMessage(""), 3000);
-                        return;
-                      }
                       const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
                       try {
                         await navigator.clipboard.writeText(text);
@@ -1907,17 +2015,14 @@ export default function UserDashboardPage() {
                         setTimeout(() => setUiMessage(""), 1200);
                       }
                     }}
-                    disabled={profile?.status !== "admin" && directReferrals >= 2}
                     className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
-                      profile?.status !== "admin" && directReferrals >= 2 
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
-                        : linkCopied 
+                      linkCopied
                         ? "bg-green-500 text-white ring-green-500/20"
                         : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
                     }`}
                     aria-label="Copy referral link"
                   >
-                    {linkCopied ? "Link Copied" : (profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
+                    {linkCopied ? "Link Copied" : "Copy Link"}
                   </button>
                 </>
               )}
@@ -2035,7 +2140,12 @@ export default function UserDashboardPage() {
                               <div className="min-w-0 truncate">
                                 <div className="truncate font-medium text-foreground">{n.email === COMPANY_ADMIN_EMAIL ? "Admin" : n.username}</div>
                                 <div className="truncate text-[10px] sm:text-xs text-subtext">
-                                  L{n.depth} · {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? n.referrerCode : "—"}
+                                  {formatUserTreeLevelLabel(n.depth)} ·{" "}
+                                  {(teamDirectCountByParentId.get(n.id) ?? 0) >= 2
+                                    ? "—"
+                                    : n.email === COMPANY_ADMIN_EMAIL || n.verified
+                                      ? n.referrerCode
+                                      : "—"}
                                 </div>
                               </div>
                               <div className="truncate text-[10px] sm:text-xs text-subtext">{n.email}</div>
@@ -2066,41 +2176,64 @@ export default function UserDashboardPage() {
                     const members = teamNodes.filter((n: any) => Number(n.depth) === lvl);
                     const count = refStats?.levels?.[String(lvl)] ?? members.length;
                     const open = openLevels.includes(lvl);
+                    const toggleLevel = () =>
+                      setOpenLevels((prev) => (prev.includes(lvl) ? prev.filter((x) => x !== lvl) : [...prev, lvl]));
                     return (
-                      <div key={lvl} className="mb-3 rounded-2xl bg-muted ring-1 ring-ring">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenLevels((prev) => (prev.includes(lvl) ? prev.filter((x) => x !== lvl) : [...prev, lvl]))
+                      <div
+                        key={lvl}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={open}
+                        onClick={toggleLevel}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleLevel();
                           }
-                          className="flex w-full items-center justify-between px-5 py-4 text-left"
-                          aria-expanded={open}
-                        >
+                        }}
+                        className="mb-3 cursor-pointer rounded-2xl bg-muted ring-1 ring-ring outline-none transition hover:ring-primary/25 focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <div className="flex w-full select-none items-center justify-between px-5 py-4 text-left pointer-events-none">
                           <span className="text-base font-medium text-foreground">Level {lvl}</span>
                           <span className="rounded-full bg-card px-3 py-1 text-sm text-subtext ring-1 ring-ring">
                             {count} {count === 1 ? "member" : "members"}
                           </span>
-                        </button>
+                        </div>
                         <div
-                          className={`px-5 transition-[max-height,opacity] duration-300 ease-out ${
-                            open ? "max-h-60 opacity-100" : "max-h-0 opacity-0"
+                          className={`overflow-hidden px-5 transition-[max-height,opacity] duration-300 ease-out ${
+                            open ? "max-h-[min(60vh,280px)] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
                           }`}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="pb-4 text-sm text-subtext">
+                          <div className="custom-scrollbar flex max-h-[min(60vh,280px)] flex-col gap-1.5 overflow-y-auto pb-4 pt-1 text-sm text-subtext">
                             {members.length === 0 ? (
                               <div className="rounded-xl bg-card px-3 py-2 text-xs ring-1 ring-ring">No members at this level</div>
                             ) : (
-                              members.slice(0, 200).map((n: any) => (
-                                <div key={n.id} className="flex min-w-0 items-center justify-between gap-3 py-1">
+                              members.slice(0, 200).map((n: any) => {
+                                const directBelow = teamDirectCountByParentId.get(n.id) ?? 0;
+                                const needsTwo = directBelow < 2;
+                                return (
+                                <div
+                                  key={n.id}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`flex min-w-0 items-center justify-between gap-3 rounded-xl px-2 py-1.5 ${
+                                    needsTwo
+                                      ? "bg-amber-500/15 ring-1 ring-amber-500/35 dark:bg-amber-500/10"
+                                      : ""
+                                  }`}
+                                >
                                   <span className="truncate font-medium text-foreground">{n.username ?? "-"}</span>
-                                  {(n.email === COMPANY_ADMIN_EMAIL || n.verified) ? (
+                                  {directBelow >= 2 ? null : n.email === COMPANY_ADMIN_EMAIL || n.verified ? (
                                     <button
                                       type="button"
-                                      onClick={async () => {
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const code = String(n.referrerCode ?? "");
+                                        const text = origin ? `${origin}/?ref=${code}` : code;
                                         try {
-                                          await navigator.clipboard.writeText(String(n.referrerCode ?? ""));
-                                          setUiMessage("Referral code copied");
-                                          toast.success("Referral code copied");
+                                          await navigator.clipboard.writeText(text);
+                                          setUiMessage("Referral link copied");
+                                          toast.success("Referral link copied");
                                           setTimeout(() => setUiMessage(""), 1200);
                                         } catch {
                                           setUiMessage("Copy failed");
@@ -2109,9 +2242,9 @@ export default function UserDashboardPage() {
                                         }
                                       }}
                                       className="inline-flex items-center gap-2 rounded-full bg-card px-3 py-1 text-xs text-subtext ring-1 ring-ring transition hover:text-foreground"
-                                      aria-label="Copy referral code"
+                                      aria-label="Copy referral link"
                                     >
-                                      <span className="max-w-[100px] truncate">{n.referrerCode ?? "-"}</span>
+                                      <span className="max-w-[100px] truncate sm:max-w-[200px]">{n.referrerCode ?? "-"}</span>
                                       <span className="text-primary">Copy</span>
                                     </button>
                                   ) : (
@@ -2126,7 +2259,8 @@ export default function UserDashboardPage() {
                                     </button>
                                   )}
                                 </div>
-                              ))
+                              );
+                              })
                             )}
                           </div>
                         </div>
@@ -2195,12 +2329,12 @@ export default function UserDashboardPage() {
             {active === "wallet" && walletTab === "withdrawHistory" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Withdrawal History</div>
-                <div className="mt-1 text-xs text-subtext">Net amount after fee · Hash shown when approved</div>
+                <div className="mt-1 text-xs text-subtext">Requested amount (gross) · Hash shown when approved</div>
                 <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="min-w-[520px]">
                     <div className="grid grid-cols-[1fr_0.7fr_0.9fr_0.75fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>Hash</div>
-                      <div>Net (USDT)</div>
+                      <div>Amount (USDT)</div>
                       <div>Status</div>
                       <div>Date</div>
                     </div>
@@ -2211,12 +2345,11 @@ export default function UserDashboardPage() {
                             {w.txHash || (w.status === "pending" ? "Pending approval" : "—")}
                           </div>
                           <div className="font-medium text-foreground">
-                            {Number(w.amount ?? 0).toFixed(2)}
-                            {w.grossRequested != null ? (
-                              <span className="ml-1 block text-[10px] font-normal text-subtext">
-                                gross {Number(w.grossRequested).toFixed(2)}
-                              </span>
-                            ) : null}
+                            {Number(
+                              w.grossRequested != null && w.grossRequested !== ""
+                                ? w.grossRequested
+                                : w.amount ?? 0,
+                            ).toFixed(2)}
                           </div>
                           <div>
                             <span
@@ -2353,6 +2486,16 @@ export default function UserDashboardPage() {
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Transfer Funds</div>
                 <div className="mt-1 text-xs text-subtext">Transfer between your internal wallets</div>
+                {profile?.status === "withdraw_suspend" ? (
+                  <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
+                    <div className="font-semibold text-amber-700 dark:text-amber-400">Transfer from withdraw wallet locked</div>
+                    <p className="mt-2 text-xs text-subtext">
+                      {profile?.withdrawSuspendSource === "auto_team_inactivity"
+                        ? "No downline activation in the last 10 days. Add a team member who completes activation — withdrawals unlock automatically."
+                        : "Your withdrawal is suspended. Please contact customer support."}
+                    </p>
+                  </div>
+                ) : (
                 <div className="mt-6 grid gap-4 sm:max-w-md">
                   <div className="grid gap-1">
                     <span className="text-xs text-subtext px-1 uppercase tracking-wider">From Wallet</span>
@@ -2406,6 +2549,7 @@ export default function UserDashboardPage() {
                     <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{internalTransferMsg}</div>
                   ) : null}
                 </div>
+                )}
               </div>
             )}
             {active === "wallet" && walletTab === "p2pHistory" && (
@@ -2563,7 +2707,7 @@ export default function UserDashboardPage() {
                     ))}
                   </div>
                   <div className="mt-8">
-                    {profile?.status === "active" || profile?.status === "admin" ? (
+                    {isActivatedMemberStatus(profile?.status) ? (
                       <div className="flex h-11 w-full items-center justify-center rounded-2xl bg-green-500/10 text-sm font-semibold text-green-500 ring-1 ring-green-500/20">
                         ALREADY ACTIVATED
                       </div>
@@ -2741,7 +2885,7 @@ export default function UserDashboardPage() {
                     <span>My Profile</span>
                     <span className={`transition-transform ${profileOpen ? "rotate-90" : ""}`}>›</span>
                   </button>
-                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${profileOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"}`}>
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "profile", label: "Update Profile" },
@@ -2781,7 +2925,7 @@ export default function UserDashboardPage() {
                     <span>Wallet</span>
                     <span className={`transition-transform ${walletOpen ? "rotate-90" : ""}`}>›</span>
                   </button>
-                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${walletOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className={`ml-2 grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${walletOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"}`}>
                     <div className="min-h-0 overflow-hidden rounded-2xl bg-background ring-1 ring-ring">
                       {[
                         { key: "deposit", label: "Deposit Funds" },
@@ -2816,35 +2960,48 @@ export default function UserDashboardPage() {
               </div>
             </div>
             <div className="px-4 pb-6">
-              <div className="text-xs text-subtext">Referral Link</div>
-              <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
-                {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
+              <div className="text-xs text-subtext">
+                {referralGate?.state !== "unverified" && profile?.status !== "admin" && directReferrals >= 2 ? "User" : "Referral Link"}
               </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (profile?.status !== "admin" && directReferrals >= 2) {
-                    toast.error("Max direct referrals reached");
-                    return;
-                  }
-                  const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    toast.success("Link copied");
-                    setMobileNavOpen(false);
-                  } catch {
-                    toast.error("Copy failed");
-                  }
-                }}
-                disabled={profile?.status !== "admin" && directReferrals >= 2}
-                className={`mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold shadow-sm ring-1 transition ${
-                  profile?.status !== "admin" && directReferrals >= 2 
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed ring-gray-300" 
-                    : "bg-primary text-white ring-primary/20 hover:bg-primary/90"
-                }`}
-              >
-                {(profile?.status !== "admin" && directReferrals >= 2) ? "Max Reached (2/2)" : "Copy Link"}
-              </button>
+              {referralGate?.state === "unverified" ? (
+                <>
+                  <div className="mt-2 rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    Verify your account to unlock
+                  </div>
+                  <button type="button" disabled className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-gray-300 text-sm font-semibold text-gray-600 ring-1 ring-gray-300">
+                    Verify to Unlock
+                  </button>
+                </>
+              ) : profile?.status !== "admin" && directReferrals >= 2 ? (
+                <>
+                  <div className="mt-2 rounded-2xl bg-muted px-4 py-3 text-sm font-medium text-foreground ring-1 ring-ring">
+                    {profile?.username ?? "—"}
+                  </div>
+                  <p className="mt-2 text-xs text-subtext">2/2 direct referrals — use team links in My Network.</p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 min-w-0 break-all whitespace-normal rounded-2xl bg-muted px-4 py-3 text-sm text-foreground ring-1 ring-ring">
+                    {origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "-"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        toast.success("Link copied");
+                        setMobileNavOpen(false);
+                      } catch {
+                        toast.error("Copy failed");
+                      }
+                    }}
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+                  >
+                    Copy Link
+                  </button>
+                </>
+              )}
 
               <button
                 type="button"

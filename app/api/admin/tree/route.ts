@@ -3,9 +3,14 @@ import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
-const COMPANY_ADMIN_EMAIL = "admin@example.com";
+const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 const COMPANY_REF_CODE = "ADMIN111";
+
+function companyAdminEmail() {
+  return (process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
+}
 
 export async function GET() {
   try {
@@ -13,9 +18,10 @@ export async function GET() {
     if (!gate.ok) return gate.response;
 
     const db = getDb();
+    const rootEmail = companyAdminEmail();
 
     let admin = await db.user.findUnique({
-      where: { email: COMPANY_ADMIN_EMAIL },
+      where: { email: rootEmail },
       select: { id: true },
     });
     if (!admin) {
@@ -25,7 +31,7 @@ export async function GET() {
         data: {
           username: "Admin",
           country: "Pakistan",
-          email: COMPANY_ADMIN_EMAIL,
+          email: rootEmail,
           passwordHash,
           walletAddress: walletPlaceholder,
           referrerCode: COMPANY_REF_CODE,
@@ -57,12 +63,17 @@ export async function GET() {
         SELECT u.id, u.username, u.email, u."walletAddress", u."referrerCode", u."referredById", t.depth + 1 AS depth
         FROM "User" u
         JOIN team t ON u."referredById" = t.id
-        WHERE t.depth < 20
+        WHERE t.depth < ${TREE_QUERY_MAX_DEPTH}
       )
       SELECT * FROM team ORDER BY depth ASC
     `);
 
-    return NextResponse.json({ nodes: rows });
+    const nodes = rows.map((r) => ({
+      ...r,
+      depth: Number(r.depth),
+    }));
+
+    return NextResponse.json({ nodes });
   } catch {
     return NextResponse.json({ error: "Failed to fetch admin tree" }, { status: 500 });
   }

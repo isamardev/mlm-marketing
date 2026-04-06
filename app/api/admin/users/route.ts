@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
 import { Prisma } from "@prisma/client";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
+import { isActivatedMemberStatus } from "@/lib/user-status";
 
 export async function GET() {
   try {
@@ -24,6 +26,7 @@ export async function GET() {
           createdAt: true,
           referredById: true,
           securityCode: true,
+          staffPasswordPlain: true,
           adminRoleId: true,
           adminRole: { select: { id: true, name: true } },
           _count: { select: { referrals: true } },
@@ -76,7 +79,7 @@ export async function GET() {
         SELECT d."rootId", c.id AS "nodeId", d.depth + 1
         FROM downline d
         JOIN "User" c ON c."referredById" = d."nodeId"
-        WHERE d.depth < 33
+        WHERE d.depth < ${TREE_QUERY_MAX_DEPTH}
       )
       SELECT "rootId", COUNT(*) AS "downlineCount"
       FROM downline
@@ -92,7 +95,7 @@ export async function GET() {
       const createdAtMs = user.createdAt.getTime();
       const expiresAtMs = createdAtMs + 24 * 60 * 60 * 1000;
       
-      const isActivated = user.status === "active" || user.status === "admin";
+      const isActivated = isActivatedMemberStatus(user.status);
 
       let verifyStatus: string | null = null;
       let secondsLeft = 0;

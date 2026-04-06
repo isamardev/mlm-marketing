@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { markSessionTabActive } from "@/lib/session-tab";
 
 export default function AdminLoginForm() {
   const [username, setUsername] = useState("");
@@ -28,6 +29,7 @@ export default function AdminLoginForm() {
       if (result?.error) {
         setError("Login failed");
       } else {
+        markSessionTabActive();
         router.push("/admin");
       }
     } else {

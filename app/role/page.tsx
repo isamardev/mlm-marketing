@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, type FormEvent } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { markSessionTabActive } from "@/lib/session-tab";
 import { useRouter } from "next/navigation";
 import { FaEye, FaEyeSlash, FaSignOutAlt } from "react-icons/fa";
 import { AdminPanelClient } from "../admin/AdminPanelClient";
@@ -54,6 +55,7 @@ export default function RoleLoginPage() {
         setError("Invalid credentials");
         return;
       }
+      markSessionTabActive();
       router.refresh();
     } catch {
       setError("Login failed");

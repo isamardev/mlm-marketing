@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { getDb } from "@/lib/db";
 import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
+import { isActivatedMemberStatus } from "@/lib/user-status";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -19,6 +21,9 @@ export type UserDashboardPayload = {
     usdtBalance: number;
     permanentWithdrawAddress: string | null;
     securityCode: string | null;
+    withdrawSuspendSource: string | null;
+    /** ISO timestamp — activity window for 10-day team withdraw rule resets from this moment. */
+    lastDownlineActivityAt: string | null;
   };
   directReferrals: number;
   currentLevel: number;
@@ -54,6 +59,8 @@ export async function getUserDashboardPayload(
       status: true,
       createdAt: true,
       referredById: true,
+      withdrawSuspendSource: true,
+      lastDownlineActivityAt: true,
     },
   });
 
@@ -128,12 +135,16 @@ export async function getUserDashboardPayload(
     usdtBalance,
     permanentWithdrawAddress,
     securityCode: hasSecurityCode ? "exists" : null,
+    withdrawSuspendSource: user.withdrawSuspendSource ?? null,
+    lastDownlineActivityAt: user.lastDownlineActivityAt
+      ? user.lastDownlineActivityAt.toISOString()
+      : null,
   };
 
   let referralGate: UserDashboardPayload["referralGate"] = null;
   if (user.referredById && user.status !== "admin") {
     const expiresAt = new Date(user.createdAt.getTime() + REFERRAL_WINDOW_MS);
-    if (user.status === "active") {
+    if (isActivatedMemberStatus(user.status)) {
       referralGate = { state: "verified", expiresAt: expiresAt.toISOString(), secondsLeft: 0 };
     } else if (nowMs > expiresAt.getTime()) {
       if (!options.adminPreview) {
@@ -153,11 +164,12 @@ export async function getUserDashboardPayload(
     }
   }
 
-  const [referrals, transactions, depAgg, wdAgg, recentDeposits] = await Promise.all([
-    db.user.count({ where: { referredById: userId, status: "active" } }),
+  const [referrals, transactions, depAgg, recentDeposits] = await Promise.all([
+    db.user.count({
+      where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
+    }),
     db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
     db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
-    db.withdrawal.aggregate({ where: { userId, status: "approved" }, _sum: { amount: true } }),
     db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
@@ -181,7 +193,24 @@ export async function getUserDashboardPayload(
   }
 
   const depositTotal = Number(depAgg._sum.amount ?? 0);
-  const withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
+  /** Gross requested for approved withdrawals (falls back to `amount` when `grossRequested` is null, e.g. legacy rows). */
+  let withdrawalTotal = 0;
+  try {
+    const whSum = await db.$queryRaw<Array<{ v: unknown }>>(
+      Prisma.sql`
+        SELECT COALESCE(SUM(COALESCE("grossRequested", amount)), 0) AS v
+        FROM "Withdrawal"
+        WHERE "userId" = ${userId} AND status = 'approved'
+      `,
+    );
+    withdrawalTotal = Number(whSum[0]?.v ?? 0);
+  } catch {
+    const wdAgg = await db.withdrawal.aggregate({
+      where: { userId, status: "approved" },
+      _sum: { amount: true },
+    });
+    withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
+  }
 
   const data: UserDashboardPayload = {
     profile: maskedProfile as UserDashboardPayload["profile"],

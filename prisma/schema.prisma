@@ -34,6 +34,10 @@ model User {
   emailVerifiedAt    DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
+  // Last team signup activity (10 upline ancestors refreshed on each new registration).
+  lastDownlineActivityAt DateTime   @default(now())
+  // manual | auto_team_inactivity | null
+  withdrawSuspendSource  String?
   securityCode       String?
   withdrawBalance    Decimal?        @default(0) @db.Decimal(18, 2)
   adminRoleId        String?
@@ -194,6 +198,7 @@ enum UserStatus {
   active
   inactive
   blocked
+  withdraw_suspend
   admin
 }
 

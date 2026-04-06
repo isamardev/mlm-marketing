@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getUserApiContext } from "@/lib/user-api-auth";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
 export async function GET(req: Request) {
   try {
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
         SELECT u.id, u."referredById", d.depth + 1
         FROM "User" u
         JOIN downline d ON u."referredById" = d.id
-        WHERE d.depth < 20 AND u.status <> 'inactive'
+        WHERE d.depth < ${TREE_QUERY_MAX_DEPTH} AND u.status <> 'inactive'
       )
       SELECT depth AS level, COUNT(*) AS count
       FROM downline
