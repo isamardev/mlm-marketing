@@ -30,7 +30,7 @@ export async function sendRegistrationOtp(email: string): Promise<{ ok: true } |
   const codeHash = await bcrypt.hash(otp, 8);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-  await db.otp.create({
+  const otpRow = await db.otp.create({
     data: {
       userId: null,
       email: normalized,
@@ -40,14 +40,17 @@ export async function sendRegistrationOtp(email: string): Promise<{ ok: true } |
     },
   });
 
-  // Return immediately; email delivery can take several seconds and blocked the signup response.
-  void sendOtpEmail({
-    to: normalized,
-    otp,
-    purpose: "registration",
-  }).catch((err) => {
+  try {
+    await sendOtpEmail({
+      to: normalized,
+      otp,
+      purpose: "registration",
+    });
+  } catch (err) {
     console.error("sendRegistrationOtp: email failed", err);
-  });
+    await db.otp.delete({ where: { id: otpRow.id } }).catch(() => {});
+    return { ok: false, error: "Failed to send OTP email. Please try again." };
+  }
 
   return { ok: true };
 }

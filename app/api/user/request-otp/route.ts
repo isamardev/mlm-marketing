@@ -38,7 +38,9 @@ export async function POST(req: Request) {
               ? 400
               : regResult.error === "Email service is not configured"
                 ? 500
-                : 400;
+                : regResult.error === "Failed to send OTP email. Please try again."
+                  ? 503
+                  : 400;
         return NextResponse.json({ error: regResult.error }, { status });
       }
       return NextResponse.json({

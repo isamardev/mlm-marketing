@@ -63,6 +63,9 @@ function getTransporter() {
   }
 
   return nodemailer.createTransport({
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 50,
     host,
     port,
     secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : parseSecure(port),
