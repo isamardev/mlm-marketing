@@ -11,7 +11,6 @@ import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } f
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
 import { isActivatedMemberStatus } from "@/lib/user-status";
-import { TEAM_INACTIVITY_DAYS } from "@/lib/team-withdraw-activity";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -196,53 +195,6 @@ function hasSavedBep20WithdrawAddress(profile: any): boolean {
   return BEP20_ADDRESS_RE.test(a);
 }
 
-function TeamWithdrawActivityTimer({ profile }: { profile: any }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const status = profile?.status;
-  if (status === "admin") return null;
-  if (!isActivatedMemberStatus(status)) return null;
-  if (status === "withdraw_suspend" && profile?.withdrawSuspendSource === "manual") return null;
-
-  const raw = profile?.lastDownlineActivityAt;
-  const startMs = raw ? new Date(raw).getTime() : NaN;
-  if (!Number.isFinite(startMs)) return null;
-
-  const deadlineMs = startMs + TEAM_INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
-  const msLeft = deadlineMs - Date.now();
-  const expired = msLeft <= 0;
-  const abs = Math.abs(msLeft);
-  const d = Math.floor(abs / 86400000);
-  const h = Math.floor((abs % 86400000) / 3600000);
-  const m = Math.floor((abs % 3600000) / 60000);
-  const s = Math.floor((abs % 60000) / 1000);
-
-  return (
-    <div className="mt-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs leading-relaxed text-foreground">
-      <div className="font-semibold text-cyan-800 dark:text-cyan-400">10-day team activity timer</div>
-      <p className="mt-1 text-subtext">
-        Within {TEAM_INACTIVITY_DAYS} days a downline member must <span className="font-medium text-foreground/90">activate their account</span> (activity counts up to 10 uplines). Signup alone does not refresh this timer. After the timer reaches zero, withdrawals may auto-suspend until activity refreshes.
-      </p>
-      {!expired ? (
-        <div className="mt-2 flex flex-wrap items-baseline gap-2">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-subtext">Time left</span>
-          <span className="font-mono text-lg font-bold tabular-nums text-foreground">
-            {d}d {String(h).padStart(2, "0")}h {String(m).padStart(2, "0")}m {String(s).padStart(2, "0")}s
-          </span>
-        </div>
-      ) : (
-        <div className="mt-2 rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] font-medium text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20">
-          Countdown finished. When a downline member activates, the activity window resets.
-        </div>
-      )}
-    </div>
-  );
-}
-
 function WithdrawSection({
   profile,
   onGoToWithdrawAddressSettings,
@@ -332,7 +284,6 @@ function WithdrawSection({
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
       <div className="text-sm font-semibold">Withdraw Funds (demo)</div>
-      <TeamWithdrawActivityTimer profile={profile} />
       {withdrawSuspended ? (
         <>
           <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
