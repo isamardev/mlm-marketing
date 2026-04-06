@@ -6,15 +6,46 @@ function parseSecure(port: number) {
   return port === 465;
 }
 
+/** Vercel-style names (EMAIL_SERVER_*) plus legacy SMTP_* — same as NextAuth / common hosts. */
+function smtpHost() {
+  return process.env.EMAIL_SERVER_HOST || process.env.SMTP_HOST;
+}
+
+function smtpPort() {
+  return Number(process.env.EMAIL_SERVER_PORT || process.env.SMTP_PORT || 587);
+}
+
+function smtpUser() {
+  return (
+    process.env.EMAIL_SERVER_USER ||
+    process.env.SMTP_USER ||
+    process.env.EMAIL_FROM ||
+    ""
+  ).trim();
+}
+
+function smtpPass() {
+  return process.env.EMAIL_SERVER_PASSWORD || process.env.SMTP_PASS || "";
+}
+
+function mailFrom() {
+  return (
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.SMTP_USER ||
+    smtpUser()
+  ).trim();
+}
+
 export function isEmailConfigured() {
-  return Boolean(
-    process.env.SMTP_URL ||
-      (process.env.SMTP_HOST &&
-        process.env.SMTP_PORT &&
-        process.env.SMTP_USER &&
-        process.env.SMTP_PASS &&
-        (process.env.SMTP_FROM || process.env.SMTP_USER)),
-  );
+  if (process.env.SMTP_URL) {
+    return true;
+  }
+  const host = smtpHost();
+  const pass = smtpPass();
+  const user = smtpUser();
+  const from = mailFrom();
+  return Boolean(host && smtpPort() && pass && user && from);
 }
 
 function getTransporter() {
@@ -22,10 +53,10 @@ function getTransporter() {
     return nodemailer.createTransport(process.env.SMTP_URL);
   }
 
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = smtpHost();
+  const port = smtpPort();
+  const user = smtpUser();
+  const pass = smtpPass();
 
   if (!host || !user || !pass) {
     throw new Error("Email service is not configured");
@@ -57,7 +88,7 @@ export async function sendOtpEmail({
   otp: string;
   purpose: OtpPurpose;
 }) {
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const from = mailFrom();
 
   if (!from) {
     throw new Error("Email sender is not configured");
