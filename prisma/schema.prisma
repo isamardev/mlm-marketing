@@ -40,6 +40,8 @@ model User {
   withdrawSuspendSource  String?
   securityCode       String?
   withdrawBalance    Decimal?        @default(0) @db.Decimal(18, 2)
+  usdtBalance        Decimal?        @default(0) @db.Decimal(18, 2)
+  permanentWithdrawAddress String?
   adminRoleId        String?
   adminRole          AdminRole?      @relation(fields: [adminRoleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   deposits           Deposit[]

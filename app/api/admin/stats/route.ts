@@ -29,7 +29,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1–2. All users (for balances split + non-admin count for "Total Users" card — excludes admin status & ADMIN_EMAIL)
+    // 1–2. All users (for balances split). "Total Users" card = non-admin with status `active` only.
     let allUsers: any[] = [];
     try {
       allUsers = await db.$queryRawUnsafe<any[]>(
@@ -94,6 +94,7 @@ export async function GET() {
 
     // Process Users Data (include usdtBalance in wallet totals)
     let nonAdminCount = 0;
+    let activeNonAdminCount = 0;
     let totalBal = 0;
     let totalWithdraw = 0;
     let totalUsdt = 0;
@@ -116,6 +117,9 @@ export async function GET() {
         adminIds.push(u.id);
       } else {
         nonAdminCount++;
+        if (u.status === "active") {
+          activeNonAdminCount++;
+        }
         totalBal += b;
         totalWithdraw += w;
         totalUsdt += usdt;
@@ -142,7 +146,7 @@ export async function GET() {
     const adminWalletSum = adminBalance + adminWithdraw + adminUsdt;
 
     const finalData = {
-      totalUsers: nonAdminCount,
+      totalUsers: activeNonAdminCount,
       nonAdminCount,
       totalDeposits,
       systemBalance: Number((allUserWalletSum + adminWalletSum).toFixed(2)),
@@ -161,6 +165,8 @@ export async function GET() {
         adminWithdraw,
         adminUsdt,
         userCount: allUsers.length,
+        nonAdminCount,
+        activeNonAdminCount,
       },
     };
 

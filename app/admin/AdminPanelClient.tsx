@@ -29,6 +29,20 @@ const paymentHistoryKindLabel: Record<PaymentHistoryKind, string> = {
   fee: "Fee history",
 };
 
+const ADMIN_TOAST_GENERIC = "Something went wrong. Please try again.";
+
+/** BEP20 (EVM) address: 0x + 40 hex chars — same as user profile / withdraw flows. */
+const BEP20_USDT_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+const INVALID_BEP20_WITHDRAW_MSG =
+  "Invalid withdrawal address. Enter a valid BEP20 USDT address: 0x followed by exactly 40 hexadecimal characters (42 characters total).";
+
+/** Log full API payload; never show raw server / DB errors in toast. */
+function toastAdminApiError(payload: unknown) {
+  console.error("[admin API]", payload);
+  toast.error(ADMIN_TOAST_GENERIC);
+}
+
 const navItems: NavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
@@ -1082,7 +1096,7 @@ export function AdminPanelClient() {
                     </div>
                   </div>
                   <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    <StatCard label="Total Users" value={String(stats?.totalUsers ?? 0)} />
+                    <StatCard label="Active users" value={String(stats?.totalUsers ?? 0)} />
                     <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} />
                     <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} />
                     <StatCard label="All User Wallet" value={toUSD(Number(stats?.allUserWallet ?? 0))} />
@@ -1237,7 +1251,7 @@ export function AdminPanelClient() {
                                         });
                                         const data = await res.json();
                                         if (!res.ok) {
-                                          toast.error(typeof data?.error === "string" ? data.error : "Failed");
+                                          toastAdminApiError(data);
                                           return;
                                         }
                                         const token = data?.token as string | undefined;
@@ -1287,7 +1301,7 @@ export function AdminPanelClient() {
                                               });
                                               const data = await res.json();
                                               if (!res.ok) {
-                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                                toastAdminApiError(data);
                                                 return;
                                               }
                                               toast.success(u.status === "blocked" ? "User unblocked" : "User activated");
@@ -1324,7 +1338,7 @@ export function AdminPanelClient() {
                                               });
                                               const data = await res.json();
                                               if (!res.ok) {
-                                                toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                                                toastAdminApiError(data);
                                                 return;
                                               }
                                               toast.success("User blocked");
@@ -1390,15 +1404,17 @@ export function AdminPanelClient() {
                       });
                       const data = await res.json();
                       if (!res.ok) {
-                        setPayoutMsg(typeof data?.error === "string" ? data.error : "Verify failed");
-                        toast.error(typeof data?.error === "string" ? data.error : "Verify failed");
+                        console.error("[admin verify-hash]", data);
+                        setPayoutMsg(ADMIN_TOAST_GENERIC);
+                        toastAdminApiError(data);
                         return;
                       }
                       setPayoutMsg("Verified and payout processed");
                       toast.success("Verified and payout processed");
-                    } catch {
-                      setPayoutMsg("Verify failed");
-                      toast.error("Verify failed");
+                    } catch (e) {
+                      console.error("[admin verify-hash]", e);
+                      setPayoutMsg(ADMIN_TOAST_GENERIC);
+                      toast.error(ADMIN_TOAST_GENERIC);
                     }
                   }}
                 >
@@ -1536,7 +1552,7 @@ export function AdminPanelClient() {
                       });
                       const data = await res.json();
                       if (!res.ok) {
-                        toast.error(typeof data?.error === "string" ? data.error : "Create failed");
+                        toastAdminApiError(data);
                         return;
                       }
                       toast.success("Role created");
@@ -1695,7 +1711,7 @@ export function AdminPanelClient() {
                                 });
                                 if (!res.ok) {
                                   const data = await res.json();
-                                  toast.error(typeof data?.error === "string" ? data.error : "Delete failed");
+                                  toastAdminApiError(data);
                                   return;
                                 }
                                 toast.success("Role deleted");
@@ -1788,16 +1804,17 @@ export function AdminPanelClient() {
                                   });
                                   const data = await res.json();
                                   if (!res.ok) {
-                                    setWithdrawMsg(typeof data?.error === "string" ? data.error : "Reject failed");
-                                    toast.error(typeof data?.error === "string" ? data.error : "Reject failed");
+                                    setWithdrawMsg(ADMIN_TOAST_GENERIC);
+                                    toastAdminApiError(data);
                                     return;
                                   }
                                   setWithdrawMsg("Withdrawal rejected");
                                   toast.success("Withdrawal rejected");
                                   setPendingWithdrawals((prev) => prev.filter((x) => x.id !== w.id));
-                                } catch {
-                                  setWithdrawMsg("Reject failed");
-                                  toast.error("Reject failed");
+                                } catch (e) {
+                                  console.error("[admin withdraw reject]", e);
+                                  setWithdrawMsg(ADMIN_TOAST_GENERIC);
+                                  toast.error(ADMIN_TOAST_GENERIC);
                                 }
                               }}
                               className="inline-flex items-center justify-center rounded-full bg-card px-3 py-1 text-xs text-foreground ring-1 ring-ring"
@@ -2369,7 +2386,7 @@ export function AdminPanelClient() {
                   });
                   const data = await res.json();
                   if (!res.ok) {
-                    toast.error(typeof data?.error === "string" ? data.error : "Update failed");
+                    toastAdminApiError(data);
                     return;
                   }
                   toast.success("Role updated");
@@ -2543,14 +2560,16 @@ export function AdminPanelClient() {
                 }
                 const data: Record<string, unknown> = {
                   id: editingUser.id,
-                  username: formData.get("username"),
-                  email: formData.get("email"),
-                  phone: formData.get("phone"),
-                  country: formData.get("country"),
+                  username: String(formData.get("username") ?? "").trim(),
+                  email: String(formData.get("email") ?? "").trim(),
+                  phone: String(formData.get("phone") ?? "").trim(),
+                  country: String(formData.get("country") ?? "").trim(),
                   withdrawBalance: formData.get("withdrawBalance"),
                   usdtBalance: formData.get("usdtBalance"),
-                  securityCode: formData.get("securityCode"),
-                  permanentWithdrawAddress: formData.get("permanentWithdrawAddress"),
+                  securityCode: String(formData.get("securityCode") ?? "").trim(),
+                  permanentWithdrawAddress: String(formData.get("permanentWithdrawAddress") ?? "")
+                    .trim()
+                    .replace(/\s+/g, ""),
                 };
                 if (editingUser.status === "admin") {
                   data.status = "admin";
@@ -2566,15 +2585,29 @@ export function AdminPanelClient() {
                   const ar = formData.get("adminRoleId");
                   data.adminRoleId = ar === "" || ar == null ? null : String(ar);
                 }
+                const addrRaw = String(data.permanentWithdrawAddress ?? "").trim();
+                if (addrRaw.length > 0 && !BEP20_USDT_ADDRESS_RE.test(addrRaw)) {
+                  toast.error(INVALID_BEP20_WITHDRAW_MSG);
+                  return;
+                }
                 try {
                   const res = await fetch("/api/admin/users/update", {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data),
                   });
-                  const json = await res.json();
+                  const json = (await res.json()) as { error?: string };
                   if (!res.ok) {
-                    toast.error(json.error || "Update failed");
+                    console.error("[admin user update]", res.status, json);
+                    if (json?.error === "INVALID_ADDRESS") {
+                      toast.error(INVALID_BEP20_WITHDRAW_MSG);
+                      return;
+                    }
+                    if (json?.error === "VALIDATION") {
+                      toast.error("Please check username, email, and required fields.");
+                      return;
+                    }
+                    toast.error(ADMIN_TOAST_GENERIC);
                     return;
                   }
                   toast.success("User updated successfully");
@@ -2657,14 +2690,18 @@ export function AdminPanelClient() {
                     Balance ($) and Withdraw wallet ($) are view only for role staff — only full admin can change them.
                   </p>
                 ) : null}
-                <label className="block">
+                <label className="block sm:col-span-2">
                   <span className="text-xs font-medium text-subtext">Withdrawal Address (USDT BEP20)</span>
                   <input
                     name="permanentWithdrawAddress"
                     defaultValue={editingUser.permanentWithdrawAddress || ""}
-                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
-                    placeholder="0x..."
+                    autoComplete="off"
+                    className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm font-mono text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
+                    placeholder="0x followed by 40 hex characters"
                   />
+                  <p className="mt-1 text-[11px] text-subtext">
+                    Same format as user profile: BEP20 address only (no spaces). Leave empty to clear.
+                  </p>
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-subtext">Security Code</span>
@@ -2807,8 +2844,8 @@ export function AdminPanelClient() {
               });
               const data = await res.json();
               if (!res.ok) {
-                setWithdrawMsg(typeof data?.error === "string" ? data.error : "Approve failed");
-                toast.error(typeof data?.error === "string" ? data.error : "Approve failed");
+                setWithdrawMsg(ADMIN_TOAST_GENERIC);
+                toastAdminApiError(data);
                 return;
               }
               setWithdrawMsg("Withdrawal approved");
@@ -2816,9 +2853,10 @@ export function AdminPanelClient() {
               setPendingWithdrawals((prev) => prev.filter((x) => x.id !== withdrawApproveModal.id));
               setWithdrawApproveModal(null);
               setWithdrawApproveHash("");
-            } catch {
-              setWithdrawMsg("Approve failed");
-              toast.error("Approve failed");
+            } catch (e) {
+              console.error("[admin withdraw approve]", e);
+              setWithdrawMsg(ADMIN_TOAST_GENERIC);
+              toast.error(ADMIN_TOAST_GENERIC);
             } finally {
               setWithdrawApproveLoading(false);
             }

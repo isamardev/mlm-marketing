@@ -11,6 +11,20 @@ function num(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** DBs created before schema sync may miss optional columns; Prisma update needs them. */
+async function ensureUserWithdrawColumns(db: ReturnType<typeof getDb>): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "permanentWithdrawAddress" TEXT`);
+  } catch (e) {
+    console.error("ensureUserWithdrawColumns: permanentWithdrawAddress", e);
+  }
+  try {
+    await db.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "usdtBalance" DECIMAL(18,2) DEFAULT 0`);
+  } catch (e) {
+    console.error("ensureUserWithdrawColumns: usdtBalance", e);
+  }
+}
+
 async function getUsdtBalanceFromDb(db: ReturnType<typeof getDb>, userId: string): Promise<number> {
   try {
     const rows = await db.$queryRawUnsafe<Array<{ v: unknown }>>(
@@ -47,24 +61,33 @@ export async function PATCH(req: Request) {
     } = body;
 
     if (!id || typeof id !== "string") {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+      return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
     }
 
     const db = getDb();
+    await ensureUserWithdrawColumns(db);
 
     const user = await db.user.findUnique({ where: { id } });
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     }
 
     const oldUsdt = await getUsdtBalanceFromDb(db, id);
 
     const prismaData: Record<string, unknown> = {};
     if (username !== undefined && username !== null) {
-      prismaData.username = String(username).trim();
+      const u = String(username).trim();
+      if (!u.length) {
+        return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
+      }
+      prismaData.username = u;
     }
     if (email !== undefined && email !== null) {
-      prismaData.email = String(email).trim().toLowerCase();
+      const em = String(email).trim().toLowerCase();
+      if (!em.length || !em.includes("@")) {
+        return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
+      }
+      prismaData.email = em;
     }
     if (phone !== undefined && phone !== null) {
       prismaData.phone = String(phone);
@@ -92,10 +115,20 @@ export async function PATCH(req: Request) {
       prismaData.securityCode = s.length ? s : null;
     }
 
+    /** Set via raw SQL — avoids Prisma client/schema drift on optional columns. */
+    let persistWithdrawAddress: string | null | undefined = undefined;
+    if (permanentWithdrawAddress !== undefined) {
+      const raw = String(permanentWithdrawAddress ?? "").trim().replace(/\s+/g, "");
+      if (raw.length > 0 && !/^0x[a-fA-F0-9]{40}$/.test(raw)) {
+        return NextResponse.json({ error: "INVALID_ADDRESS" }, { status: 400 });
+      }
+      persistWithdrawAddress = raw.length > 0 ? raw : null;
+    }
+
     const np = typeof newPassword === "string" ? newPassword.trim() : "";
     if (np.length > 0) {
       if (np.length < 6) {
-        return NextResponse.json({ error: "New password must be at least 6 characters" }, { status: 400 });
+        return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
       }
       prismaData.passwordHash = await bcrypt.hash(np, 12);
       if (user.adminRoleId || user.status === "admin") {
@@ -112,7 +145,7 @@ export async function PATCH(req: Request) {
       if (raw) {
         const role = await db.adminRole.findUnique({ where: { id: raw } });
         if (!role) {
-          return NextResponse.json({ error: "Invalid admin role" }, { status: 400 });
+          return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
         }
         prismaData.adminRoleId = raw;
       } else {
@@ -125,17 +158,7 @@ export async function PATCH(req: Request) {
     const usdtDelta =
       usdtBalance !== undefined && canEditBalances ? newUsdt - oldUsdt : 0;
 
-    const extraClauses: string[] = [];
-    const extraVals: unknown[] = [];
-    let p = 1;
-    if (usdtBalance !== undefined && canEditBalances) {
-      extraClauses.push(`"usdtBalance" = $${p++}`);
-      extraVals.push(newUsdt);
-    }
-    if (permanentWithdrawAddress !== undefined) {
-      extraClauses.push(`"permanentWithdrawAddress" = $${p++}`);
-      extraVals.push(String(permanentWithdrawAddress ?? "").trim());
-    }
+    const persistUsdtBalance = usdtBalance !== undefined && canEditBalances ? newUsdt : undefined;
 
     const willActivate =
       status !== undefined &&
@@ -144,13 +167,27 @@ export async function PATCH(req: Request) {
       user.status === "inactive";
 
     if (willActivate) {
-      await runActivationPayoutEngine({
-        sourceUserId: id,
-        activationAmount: 10,
-        note: "Admin activation",
-        skipUserDeduction: true,
-      });
+      try {
+        await runActivationPayoutEngine({
+          sourceUserId: id,
+          activationAmount: 10,
+          note: "Admin activation",
+          skipUserDeduction: true,
+        });
+      } catch (actErr) {
+        console.error("Admin user update: activation engine failed", actErr);
+        return NextResponse.json({ error: "ACTIVATION_FAILED" }, { status: 500 });
+      }
       delete prismaData.status;
+    }
+
+    const hasPrismaPatch = Object.keys(prismaData).length > 0;
+    const hasAddressPatch = persistWithdrawAddress !== undefined;
+    const hasUsdtPatch = persistUsdtBalance !== undefined;
+    const hasDepositLog =
+      canEditBalances && usdtBalance !== undefined && usdtDelta > 0.0001;
+    if (!hasPrismaPatch && !hasAddressPatch && !hasUsdtPatch && !hasDepositLog) {
+      return NextResponse.json({ success: true });
     }
 
     await db.$transaction(async (tx) => {
@@ -161,11 +198,19 @@ export async function PATCH(req: Request) {
         });
       }
 
-      if (extraClauses.length > 0) {
-        extraVals.push(id);
+      if (persistWithdrawAddress !== undefined) {
         await tx.$executeRawUnsafe(
-          `UPDATE "User" SET ${extraClauses.join(", ")} WHERE id = $${p}`,
-          ...extraVals,
+          `UPDATE "User" SET "permanentWithdrawAddress" = $1 WHERE id = $2`,
+          persistWithdrawAddress,
+          id,
+        );
+      }
+
+      if (persistUsdtBalance !== undefined) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "User" SET "usdtBalance" = $1 WHERE id = $2`,
+          persistUsdtBalance,
+          id,
         );
       }
 
@@ -188,7 +233,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error("Admin user update error:", error);
-    const message = error instanceof Error ? error.message : "Failed to update user";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error("Prisma meta:", error.code, error.meta);
+    }
+    return NextResponse.json({ error: "UPDATE_FAILED" }, { status: 500 });
   }
 }
