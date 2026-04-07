@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { getUserApiContext } from "@/lib/user-api-auth";
+import { INTERNAL_TRANSFER_WITHDRAW_TO_USDT_NOTE } from "@/lib/internal-transfer-constants";
 
 export async function POST(req: Request) {
   try {
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
             level: 0,
             amount: amt,
             type: "adjustment",
-            note: `Internal transfer from ${sourceLabel} to ${targetLabel}`
+            note: INTERNAL_TRANSFER_WITHDRAW_TO_USDT_NOTE,
           }
         });
       } catch (logErr) {

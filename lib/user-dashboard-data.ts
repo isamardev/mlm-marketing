@@ -2,6 +2,11 @@ import { Prisma } from "@prisma/client";
 import { getDb } from "@/lib/db";
 import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
 import { isActivatedMemberStatus } from "@/lib/user-status";
+import {
+  findWithdrawToUsdtTransactions,
+  mergeWithdrawHistoryLists,
+  sumWithdrawToUsdtInternal,
+} from "@/lib/user-withdraw-history";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -33,6 +38,10 @@ export type UserDashboardPayload = {
   recentWithdrawals: Array<Record<string, unknown>>;
   depositTotal: number;
   withdrawalTotal: number;
+  /** All-time sum of MLM commission credits (not derived from the last N activity rows). */
+  commissionTotal: number;
+  /** Commission credited today (UTC calendar day; matches client date display). */
+  commissionToday: number;
   referralGate: null | { state: "unverified" | "verified"; expiresAt: string; secondsLeft: number };
 };
 
@@ -164,27 +173,53 @@ export async function getUserDashboardPayload(
     }
   }
 
-  const [referrals, transactions, depAgg, recentDeposits] = await Promise.all([
-    db.user.count({
-      where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
-    }),
-    db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
-    db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
-    db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
-  ]);
+  const utcDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const utcDayEnd = new Date(utcDayStart.getTime() + 86400000);
 
-  let recentWithdrawals: Awaited<ReturnType<typeof db.withdrawal.findMany>> = [];
-  try {
-    recentWithdrawals = await withWithdrawalColumnRetry(db, () =>
-      db.withdrawal.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 50,
+  const [referrals, transactions, depAgg, recentDeposits, commissionAllAgg, commissionTodayAgg] =
+    await Promise.all([
+      db.user.count({
+        where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
       }),
-    );
+      db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
+      db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
+      db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
+      db.transaction.aggregate({
+        where: { userId, type: "commission" },
+        _sum: { amount: true },
+      }),
+      db.transaction.aggregate({
+        where: {
+          userId,
+          type: "commission",
+          createdAt: { gte: utcDayStart, lt: utcDayEnd },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+  const commissionTotal = Number(commissionAllAgg._sum.amount ?? 0);
+  const commissionToday = Number(commissionTodayAgg._sum.amount ?? 0);
+
+  let recentWithdrawalsRaw: Awaited<ReturnType<typeof db.withdrawal.findMany>> = [];
+  let internalWithdrawToUsdt: Awaited<ReturnType<typeof findWithdrawToUsdtTransactions>> = [];
+  try {
+    const [wRows, intRows] = await Promise.all([
+      withWithdrawalColumnRetry(db, () =>
+        db.withdrawal.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: 80,
+        }),
+      ),
+      findWithdrawToUsdtTransactions(db, userId, 80),
+    ]);
+    recentWithdrawalsRaw = wRows;
+    internalWithdrawToUsdt = intRows;
   } catch (err) {
-    console.error("user-dashboard-data: withdrawal.findMany failed", err);
-    recentWithdrawals = [];
+    console.error("user-dashboard-data: withdrawal / internal history failed", err);
+    recentWithdrawalsRaw = [];
+    internalWithdrawToUsdt = [];
   }
 
   let currentLevel = 0;
@@ -193,7 +228,7 @@ export async function getUserDashboardPayload(
   }
 
   const depositTotal = Number(depAgg._sum.amount ?? 0);
-  /** Gross requested for approved withdrawals (falls back to `amount` when `grossRequested` is null, e.g. legacy rows). */
+  /** Gross requested for approved on-chain withdrawals + withdraw wallet → USDT internal transfers. */
   let withdrawalTotal = 0;
   try {
     const whSum = await db.$queryRaw<Array<{ v: unknown }>>(
@@ -211,6 +246,11 @@ export async function getUserDashboardPayload(
     });
     withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
   }
+  try {
+    withdrawalTotal += await sumWithdrawToUsdtInternal(db, userId);
+  } catch {
+    /* ignore */
+  }
 
   const data: UserDashboardPayload = {
     profile: maskedProfile as UserDashboardPayload["profile"],
@@ -226,18 +266,15 @@ export async function getUserDashboardPayload(
       amount: Number(d.amount),
       createdAt: d.createdAt.toISOString(),
     })) as unknown as UserDashboardPayload["recentDeposits"],
-    recentWithdrawals: recentWithdrawals.map((w) => ({
-      id: w.id,
-      address: w.address,
-      amount: Number(w.amount),
-      grossRequested: w.grossRequested != null ? Number(w.grossRequested) : null,
-      feeAmount: w.feeAmount != null ? Number(w.feeAmount) : null,
-      status: w.status,
-      txHash: w.txHash,
-      createdAt: w.createdAt.toISOString(),
-    })) as unknown as UserDashboardPayload["recentWithdrawals"],
+    recentWithdrawals: mergeWithdrawHistoryLists(
+      recentWithdrawalsRaw,
+      internalWithdrawToUsdt,
+      50,
+    ) as unknown as UserDashboardPayload["recentWithdrawals"],
     depositTotal,
     withdrawalTotal,
+    commissionTotal,
+    commissionToday,
     referralGate,
   };
 

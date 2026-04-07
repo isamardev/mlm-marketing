@@ -1229,7 +1229,12 @@ export default function UserDashboardPage() {
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [openLevels, setOpenLevels] = useState<number[]>([]);
-  const [totals, setTotals] = useState<{ deposits: number; withdrawals: number }>({ deposits: 0, withdrawals: 0 });
+  const [totals, setTotals] = useState<{
+    deposits: number;
+    withdrawals: number;
+    commissionTotal: number;
+    commissionToday: number;
+  }>({ deposits: 0, withdrawals: 0, commissionTotal: 0, commissionToday: 0 });
   const [p2pRecipient, setP2pRecipient] = useState("");
   const [p2pAmount, setP2pAmount] = useState("");
   const [p2pSecurityCode, setP2pSecurityCode] = useState("");
@@ -1396,37 +1401,6 @@ export default function UserDashboardPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const todayEarnings = useMemo(() => {
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      return Number(
-        (recentTransactions || [])
-          .filter(
-            (t: any) =>
-              String(t?.type || "").toLowerCase() === "commission" &&
-              String(t?.createdAt || "").slice(0, 10) === today,
-          )
-          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
-          .toFixed(2),
-      );
-    } catch {
-      return 0;
-    }
-  }, [recentTransactions]);
-
-  const totalIncomeAllTime = useMemo(() => {
-    try {
-      return Number(
-        (recentTransactions || [])
-          .filter((t: any) => String(t?.type || "").toLowerCase() === "commission")
-          .reduce((sum: number, t: any) => sum + Number(t?.amount || 0), 0)
-          .toFixed(2),
-      );
-    } catch {
-      return 0;
-    }
-  }, [recentTransactions]);
-
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
     setOrigin(o);
@@ -1457,6 +1431,8 @@ export default function UserDashboardPage() {
         setTotals({
           deposits: Number(dash?.depositTotal ?? 0),
           withdrawals: Number(dash?.withdrawalTotal ?? 0),
+          commissionTotal: Number(dash?.commissionTotal ?? 0),
+          commissionToday: Number(dash?.commissionToday ?? 0),
         });
       }
 
@@ -2031,8 +2007,8 @@ export default function UserDashboardPage() {
                   <div className="mt-6 grid gap-3 grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   <StatCard label="Withdraw Wallet" value={toUSD(Number(profile?.withdrawBalance ?? 0))} />
                   <StatCard label="USDT Wallet (Main)" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
-                  <StatCard label="Total Income" value={toUSD(totalIncomeAllTime)} />
-                  <StatCard label="Daily Income" value={toUSD(todayEarnings)} />
+                  <StatCard label="Total Income" value={toUSD(totals.commissionTotal)} />
+                  <StatCard label="Daily Income" value={toUSD(totals.commissionToday)} />
                   <StatCard label="Total Team" value={String(refStats?.total ?? 0)} />
                   <StatCard label="Total Deposit" value={toUSD(totals.deposits)} />
                   <StatCard label="Total Withdraw" value={toUSD(totals.withdrawals)} />
@@ -2280,7 +2256,9 @@ export default function UserDashboardPage() {
             {active === "wallet" && walletTab === "withdrawHistory" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Withdrawal History</div>
-                <div className="mt-1 text-xs text-subtext">Requested amount (gross) · Hash shown when approved</div>
+                <div className="mt-1 text-xs text-subtext">
+                  On-chain requests (gross) and moves from withdraw wallet to your USDT balance · Hash when approved by admin
+                </div>
                 <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="min-w-[520px]">
                     <div className="grid grid-cols-[1fr_0.7fr_0.9fr_0.75fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
@@ -2292,8 +2270,19 @@ export default function UserDashboardPage() {
                     <div className="divide-y divide-[color:var(--ring)]">
                       {recentWithdrawals.map((w: any) => (
                         <div key={w.id} className="grid grid-cols-[1fr_0.7fr_0.9fr_0.75fr] gap-2 px-4 py-4 text-sm">
-                          <div className="truncate font-mono text-[11px]" title={w.txHash || undefined}>
-                            {w.txHash || (w.status === "pending" ? "Pending approval" : "—")}
+                          <div
+                            className="truncate font-mono text-[11px]"
+                            title={w.entryKind === "internal_usdt" ? "Withdraw wallet → USDT wallet" : w.txHash || undefined}
+                          >
+                            {w.entryKind === "internal_usdt" ? (
+                              <span className="font-sans text-foreground">→ USDT wallet (your account)</span>
+                            ) : w.txHash ? (
+                              w.txHash
+                            ) : w.status === "pending" ? (
+                              "Pending approval"
+                            ) : (
+                              "—"
+                            )}
                           </div>
                           <div className="font-medium text-foreground">
                             {Number(
@@ -2305,14 +2294,16 @@ export default function UserDashboardPage() {
                           <div>
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${
-                                w.status === "approved"
-                                  ? "bg-green-500/10 text-green-500 ring-green-500/20"
-                                  : w.status === "pending"
-                                    ? "bg-yellow-500/10 text-yellow-500 ring-yellow-500/20"
-                                    : "bg-red-500/10 text-red-500 ring-red-500/20"
+                                w.entryKind === "internal_usdt"
+                                  ? "bg-primary/10 text-primary ring-primary/25"
+                                  : w.status === "approved"
+                                    ? "bg-green-500/10 text-green-500 ring-green-500/20"
+                                    : w.status === "pending"
+                                      ? "bg-yellow-500/10 text-yellow-500 ring-yellow-500/20"
+                                      : "bg-red-500/10 text-red-500 ring-red-500/20"
                               }`}
                             >
-                              {String(w.status || "")}
+                              {w.entryKind === "internal_usdt" ? "to USDT" : String(w.status || "")}
                             </span>
                           </div>
                           <div className="text-subtext">{String(w.createdAt).slice(0, 10)}</div>

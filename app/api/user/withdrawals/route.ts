@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getUserApiContext } from "@/lib/user-api-auth";
 import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
+import { findWithdrawToUsdtTransactions, mergeWithdrawHistoryLists } from "@/lib/user-withdraw-history";
 
 export async function GET(req: Request) {
   try {
@@ -17,24 +18,18 @@ export async function GET(req: Request) {
     const db = getDb();
     const userId = ctx.userId;
 
-    const rows = await withWithdrawalColumnRetry(db, () =>
-      db.withdrawal.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      }),
-    );
+    const [rows, internals] = await Promise.all([
+      withWithdrawalColumnRetry(db, () =>
+        db.withdrawal.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
+      ),
+      findWithdrawToUsdtTransactions(db, userId, 100),
+    ]);
 
-    const items = rows.map((w) => ({
-      id: w.id,
-      address: w.address,
-      amount: Number(w.amount),
-      grossRequested: w.grossRequested != null ? Number(w.grossRequested) : null,
-      feeAmount: w.feeAmount != null ? Number(w.feeAmount) : null,
-      status: w.status,
-      txHash: w.txHash,
-      createdAt: w.createdAt.toISOString(),
-    }));
+    const items = mergeWithdrawHistoryLists(rows, internals, 100);
 
     return NextResponse.json({ items });
   } catch (e) {
