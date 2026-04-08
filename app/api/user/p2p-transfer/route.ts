@@ -81,7 +81,8 @@ export async function POST(req: Request) {
     if (recipient.id === senderId) {
       return NextResponse.json({ error: "Cannot transfer to self" }, { status: 400 });
     }
-    if (recipient.status === "inactive" || recipient.status === "blocked") {
+    // Allow pre-activation (`inactive`) users to receive P2P; only hard-blocked accounts cannot receive.
+    if (recipient.status === "blocked") {
       return NextResponse.json({ error: "Recipient unavailable" }, { status: 400 });
     }
 
@@ -116,16 +117,16 @@ export async function POST(req: Request) {
       try {
         await tx.user.update({
           where: { id: recipient!.id },
-          data: { withdrawBalance: { increment: new Prisma.Decimal(amt.toFixed(2)) } } as any,
+          data: { usdtBalance: { increment: new Prisma.Decimal(amt.toFixed(2)) } } as any,
         });
       } catch (e) {
         try {
           await tx.$executeRawUnsafe(
-            `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "withdrawBalance" DECIMAL(18,2) DEFAULT 0`
+            `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "usdtBalance" DECIMAL(18,2) DEFAULT 0`
           );
         } catch {}
         await tx.$executeRawUnsafe(
-          `UPDATE "User" SET "withdrawBalance" = COALESCE("withdrawBalance", 0) + $1 WHERE id = $2`,
+          `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance", 0) + $1 WHERE id = $2`,
           amt, recipient!.id
         );
       }
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
           level: 0,
           amount: new Prisma.Decimal((-amt).toFixed(2)),
           type: "adjustment",
-          note: `P2P to ${recipient!.username} (to Withdraw wallet)`,
+          note: `P2P to ${recipient!.username} (to USDT wallet)`,
         },
       });
       await tx.transaction.create({
@@ -146,7 +147,7 @@ export async function POST(req: Request) {
           level: 0,
           amount: new Prisma.Decimal(amt.toFixed(2)),
           type: "adjustment",
-          note: `P2P from ${sender.username} (to Withdraw wallet)`,
+          note: `P2P from ${sender.username} (to USDT wallet)`,
         },
       });
       await tx.notification.create({

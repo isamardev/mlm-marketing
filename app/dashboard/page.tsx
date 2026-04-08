@@ -2320,7 +2320,10 @@ export default function UserDashboardPage() {
             {active === "wallet" && walletTab === "p2pTransfer" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">P2P Fund Transfer</div>
-                <div className="mt-1 text-xs text-subtext">Transfer USDT between members · Minimum {MIN_WITHDRAW_OR_P2P_USDT} USDT</div>
+                <div className="mt-1 text-xs text-subtext">
+                  Send from your USDT wallet · Recipient receives in their USDT wallet · Minimum {MIN_WITHDRAW_OR_P2P_USDT}{" "}
+                  USDT
+                </div>
                 <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground">
                   <span className="font-medium text-primary">Note:</span> A <span className="font-medium">10% fee</span> will apply on P2P transfers. For a limited time, this fee is <span className="font-medium">waived (free)</span>.
                 </div>

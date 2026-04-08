@@ -8,9 +8,6 @@ export async function POST(req: Request) {
   try {
     const ctx = await getUserApiContext(req);
     if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
-    if (ctx.effectiveStatus === "inactive") {
-      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
-    }
     if (ctx.effectiveStatus === "blocked") {
       return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }

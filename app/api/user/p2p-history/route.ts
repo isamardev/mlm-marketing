@@ -6,9 +6,9 @@ import { getUserApiContext } from "@/lib/user-api-auth";
 function counterpartyNameFromP2pNote(note: string | null): string {
   if (!note) return "";
   const n = note.trim();
-  const mNewTo = /^P2P to (.+) \(to Withdraw wallet\)$/i.exec(n);
+  const mNewTo = /^P2P to (.+) \(to (?:USDT|Withdraw) wallet\)$/i.exec(n);
   if (mNewTo) return mNewTo[1].trim();
-  const mNewFrom = /^P2P from (.+) \(to Withdraw wallet\)$/i.exec(n);
+  const mNewFrom = /^P2P from (.+) \(to (?:USDT|Withdraw) wallet\)$/i.exec(n);
   if (mNewFrom) return mNewFrom[1].trim();
   const mOldTo = /^P2P to (.+) \(([a-z0-9]+)\)/i.exec(n);
   if (mOldTo) return `${mOldTo[1].trim()} (${mOldTo[2]})`;
@@ -21,9 +21,6 @@ export async function GET(req: Request) {
   try {
     const ctx = await getUserApiContext(req);
     if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
-    if (ctx.effectiveStatus === "inactive") {
-      return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
-    }
     if (ctx.effectiveStatus === "blocked") {
       return NextResponse.json({ error: "Account blocked" }, { status: 403 });
     }
