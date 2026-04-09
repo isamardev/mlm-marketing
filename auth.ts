@@ -5,6 +5,17 @@ import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 import { resolveAdminPermissionsForUser } from "@/lib/admin-permissions";
 
+const authUrlEnv = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
+if (
+  process.env.VERCEL === "1" &&
+  authUrlEnv &&
+  (authUrlEnv.includes("localhost") || authUrlEnv.includes("127.0.0.1"))
+) {
+  console.error(
+    "[auth] AUTH_URL / NEXTAUTH_URL points to localhost on Vercel. Remove it or set to your live https URL (e.g. https://your-app.vercel.app). Local-only values break login in production.",
+  );
+}
+
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).optional(),
@@ -16,7 +27,8 @@ const credentialsSchema = z.object({
 
 /**
  * trustHost: required on Vercel / HTTPS proxies so Auth.js accepts the incoming Host header.
- * Set AUTH_SECRET + DATABASE_URL (+ optional AUTH_URL) in the Vercel project env.
+ * Set AUTH_SECRET + DATABASE_URL on the host. For AUTH_URL / NEXTAUTH_URL: use only in
+ * `.env.local` for localhost; on Vercel either omit them (often inferred) or set `https://…`.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
