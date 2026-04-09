@@ -37,6 +37,8 @@ const distDir = distDirWindowsTempDevOnly();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  /** Avoid bundling Prisma into server chunks incorrectly on Vercel. */
+  serverExternalPackages: ["@prisma/client"],
   ...(distDir ? { distDir } : {}),
   outputFileTracingRoot: projectRoot,
   /** Polling helps file watchers on Windows (slow/locked drives, Defender). */

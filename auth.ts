@@ -49,63 +49,67 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         staffRoleLogin: { label: "staffRoleLogin", type: "text" },
       },
       authorize: async (credentials) => {
-    const parsed = credentialsSchema.safeParse(credentials);
-    if (!parsed.success) return null;
+        try {
+          const parsed = credentialsSchema.safeParse(credentials);
+          if (!parsed.success) return null;
 
-    const { email, password, isImpersonation, adminToken, staffRoleLogin } = parsed.data;
+          const { email, password, isImpersonation, adminToken, staffRoleLogin } = parsed.data;
 
-    const db = getDb();
+          const db = getDb();
 
-    // Impersonation flow (Admin viewing user)
-    if (isImpersonation === "true" && adminToken) {
-      // Check if adminToken matches admin credentials or a fixed secret
-      if (adminToken === "admin123" || adminToken === process.env.ADMIN_SECRET) {
-        const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
-        if (!user) return null;
-        // Allow login as any user without password for admin
-        return {
-          id: user.id,
-          name: user.username,
-          email: user.email,
-          status: user.status,
-        };
-      }
-    }
+          // Impersonation flow (Admin viewing user)
+          if (isImpersonation === "true" && adminToken) {
+            if (adminToken === "admin123" || adminToken === process.env.ADMIN_SECRET) {
+              const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
+              if (!user) return null;
+              return {
+                id: user.id,
+                name: user.username,
+                email: user.email,
+                status: user.status,
+              };
+            }
+          }
 
-    if (email === "admin@example.com" && password === "admin123") {
-      return {
-        id: "admin-fixed",
-        name: "Admin",
-        email: "admin@example.com",
-        status: "admin",
-      };
-    }
+          if (email === "admin@example.com" && password === "admin123") {
+            return {
+              id: "admin-fixed",
+              name: "Admin",
+              email: "admin@example.com",
+              status: "admin",
+            };
+          }
 
-    if (!password) return null;
-    const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user) return null;
+          if (!password) return null;
+          const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
+          if (!user) return null;
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return null;
+          const ok = await bcrypt.compare(password, user.passwordHash);
+          if (!ok) return null;
 
-    if (user.status === "blocked") return null;
+          if (user.status === "blocked") return null;
 
-    if (user.adminRoleId && staffRoleLogin !== "true") {
-      return null;
-    }
-    if (staffRoleLogin === "true" && user.status !== "admin") {
-      return null;
-    }
+          if (user.adminRoleId && staffRoleLogin !== "true") {
+            return null;
+          }
+          if (staffRoleLogin === "true" && user.status !== "admin") {
+            return null;
+          }
 
-    const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-    const status = adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;
+          const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+          const status =
+            adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;
 
-        return {
-          id: user.id,
-          name: user.username,
-          email: user.email,
-          status,
-        };
+          return {
+            id: user.id,
+            name: user.username,
+            email: user.email,
+            status,
+          };
+        } catch (e) {
+          console.error("[auth] authorize failed (check DATABASE_URL / SSL / pooler on Vercel):", e);
+          return null;
+        }
       },
     }),
   ],
@@ -117,13 +121,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.email = (user as { email?: string | null }).email ?? token.email;
       }
       if (!user && token.userId && token.status !== "admin") {
-        const db = getDb();
-        const fresh = await db.user.findUnique({
-          where: { id: token.userId as string },
-          select: { status: true, email: true },
-        });
-        if (fresh?.status) {
-          token.status = fresh.status;
+        try {
+          const db = getDb();
+          const fresh = await db.user.findUnique({
+            where: { id: token.userId as string },
+            select: { status: true, email: true },
+          });
+          if (fresh?.status) {
+            token.status = fresh.status;
+          }
+        } catch (e) {
+          console.error("[auth] jwt user refresh:", e);
         }
       }
       const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
