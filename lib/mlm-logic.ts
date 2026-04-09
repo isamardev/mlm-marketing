@@ -14,6 +14,8 @@ type PayoutResult = {
   amount: number;
 };
 
+type DbTx = Parameters<Parameters<ReturnType<typeof getDb>["$transaction"]>[0]>[0];
+
 /**
  * Sponsor chain from depositor upward: [0]=direct sponsor (L1), [1]=their sponsor (L2), …
  * DB is single-parent (`referredById`): each user has one upline path. “Legs” are separate subtrees
@@ -353,12 +355,14 @@ export async function runActivationPayoutEngine(params: {
   return { sourceUserId, activationAmount, payouts, reactivationOnly };
 }
 
-export async function runFixedPayoutEngine(params: {
-  sourceUserId: string;
-  depositAmount: number;
-  note?: string;
-}) {
-  const db = getDb();
+export async function runFixedPayoutEngineWithTx(
+  tx: DbTx,
+  params: {
+    sourceUserId: string;
+    depositAmount: number;
+    note?: string;
+  },
+) {
   const sourceUserId = params.sourceUserId;
   const depositAmount = params.depositAmount;
   const note = params.note ?? "Deposit confirmation";
@@ -367,101 +371,108 @@ export async function runFixedPayoutEngine(params: {
 
   const payouts: PayoutResult[] = [];
 
-  await db.$transaction(async (tx) => {
-    await tx.transaction.create({
+  await tx.transaction.create({
+    data: {
+      userId: sourceUserId,
+      sourceUserId,
+      level: 0,
+      amount: new Prisma.Decimal(depositAmount.toFixed(2)),
+      type: "deposit",
+      note,
+    },
+  });
+
+  const adminByStatus = await tx.user.findFirst({
+    where: { status: "admin" },
+    select: { id: true, email: true, username: true },
+  });
+  const adminByEmail =
+    adminByStatus ??
+    (await tx.user.findUnique({ where: { email: adminEmail }, select: { id: true, email: true, username: true } }));
+  const adminId = adminByEmail?.id ?? null;
+  if (!adminId) {
+    throw new Error("Admin user not found");
+  }
+
+  const sourceUser = await tx.user.findUnique({
+    where: { id: sourceUserId },
+    select: { id: true, referredById: true, username: true },
+  });
+  if (!sourceUser) {
+    throw new Error("Source user not found");
+  }
+
+  const fixedChain = await loadSponsorChainIds(tx, sourceUser.referredById);
+  let remainingAmount = Number(depositAmount.toFixed(2));
+
+  for (let level = 1; level <= 20 && remainingAmount >= perLevel; level += 1) {
+    const idx = level - 1;
+    if (idx >= fixedChain.length) break;
+    const beneficiary = await tx.user.findUnique({
+      where: { id: fixedChain[idx] },
+      select: { id: true },
+    });
+    if (!beneficiary) break;
+
+    await tx.user.update({
+      where: { id: beneficiary.id },
+      data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
+    });
+    await tx.notification.create({
       data: {
-        userId: sourceUserId,
-        sourceUserId,
-        level: 0,
-        amount: new Prisma.Decimal(depositAmount.toFixed(2)),
-        type: "deposit",
-        note,
+        userId: beneficiary.id,
+        type: "commission",
+        title: `L${level} Commission`,
+        message: `You received ${perLevel.toFixed(2)} from ${sourceUser.username}`,
       },
     });
-
-    const adminByStatus = await tx.user.findFirst({
-      where: { status: "admin" },
-      select: { id: true, email: true, username: true },
+    await tx.transaction.create({
+      data: {
+        userId: beneficiary.id,
+        sourceUserId,
+        level,
+        amount: new Prisma.Decimal(perLevel.toFixed(2)),
+        type: "commission",
+        note: `L${level} fixed payout from ${sourceUserId}`,
+      },
     });
-    const adminByEmail =
-      adminByStatus ??
-      (await tx.user.findUnique({ where: { email: adminEmail }, select: { id: true, email: true, username: true } }));
-    const adminId = adminByEmail?.id ?? null;
-    if (!adminId) {
-      throw new Error("Admin user not found");
-    }
+    payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
+    remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
+  }
 
-    const sourceUser = await tx.user.findUnique({
-      where: { id: sourceUserId },
-      select: { id: true, referredById: true, username: true },
+  if (remainingAmount > 0) {
+    await tx.user.update({
+      where: { id: adminId },
+      data: { balance: { increment: new Prisma.Decimal(remainingAmount.toFixed(2)) } },
     });
-    if (!sourceUser) {
-      throw new Error("Source user not found");
-    }
-
-    const fixedChain = await loadSponsorChainIds(tx, sourceUser.referredById);
-    let remainingAmount = Number(depositAmount.toFixed(2));
-
-    for (let level = 1; level <= 20 && remainingAmount >= perLevel; level += 1) {
-      const idx = level - 1;
-      if (idx >= fixedChain.length) break;
-      const beneficiary = await tx.user.findUnique({
-        where: { id: fixedChain[idx] },
-        select: { id: true },
-      });
-      if (!beneficiary) break;
-
-      await tx.user.update({
-        where: { id: beneficiary.id },
-        data: { balance: { increment: new Prisma.Decimal(perLevel.toFixed(2)) } },
-      });
-      await tx.notification.create({
-        data: {
-          userId: beneficiary.id,
-          type: "commission",
-          title: `L${level} Commission`,
-          message: `You received ${perLevel.toFixed(2)} from ${sourceUser.username}`,
-        },
-      });
-      await tx.transaction.create({
-        data: {
-          userId: beneficiary.id,
-          sourceUserId,
-          level,
-          amount: new Prisma.Decimal(perLevel.toFixed(2)),
-          type: "commission",
-          note: `L${level} fixed payout from ${sourceUserId}`,
-        },
-      });
-      payouts.push({ level, beneficiaryUserId: beneficiary.id, amount: perLevel });
-      remainingAmount = Number((remainingAmount - perLevel).toFixed(2));
-    }
-
-    if (remainingAmount > 0) {
-      await tx.user.update({
-        where: { id: adminId },
-        data: { balance: { increment: new Prisma.Decimal(remainingAmount.toFixed(2)) } },
-      });
-      await tx.notification.create({
-        data: {
-          userId: adminId,
-          type: "commission",
-          title: "Admin Deposit Share",
-          message: `You received ${remainingAmount.toFixed(2)} from ${sourceUser.username}`,
-        },
-      });
-      await tx.transaction.create({
-        data: {
-          userId: adminId,
-          sourceUserId,
-          level: 0,
-          amount: new Prisma.Decimal(remainingAmount.toFixed(2)),
-          type: "commission",
-          note: `Admin share from ${sourceUserId}`,
-        },
-      });
-    }
-  }, INTERACTIVE_TX_OPTIONS);
+    await tx.notification.create({
+      data: {
+        userId: adminId,
+        type: "commission",
+        title: "Admin Deposit Share",
+        message: `You received ${remainingAmount.toFixed(2)} from ${sourceUser.username}`,
+      },
+    });
+    await tx.transaction.create({
+      data: {
+        userId: adminId,
+        sourceUserId,
+        level: 0,
+        amount: new Prisma.Decimal(remainingAmount.toFixed(2)),
+        type: "commission",
+        note: `Admin share from ${sourceUserId}`,
+      },
+    });
+  }
 
   return { sourceUserId, depositAmount, payouts };
+}
+
+export async function runFixedPayoutEngine(params: {
+  sourceUserId: string;
+  depositAmount: number;
+  note?: string;
+}) {
+  const db = getDb();
+  return db.$transaction((tx) => runFixedPayoutEngineWithTx(tx, params), INTERACTIVE_TX_OPTIONS);
 }

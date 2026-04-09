@@ -3,14 +3,14 @@ import { signOut, useSession } from "next-auth/react";
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FaUser, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaTelegramPlane, FaWhatsapp, FaCog, FaSignOutAlt, FaUserCircle, FaEye, FaEyeSlash } from "react-icons/fa";
-import DepositButton from "@/components/DepositButton.jsx";
 import { toast } from "react-toastify";
 import WhatsAppButton from "@/components/WhatsAppButton";
-import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
+import { DEFAULT_RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
 import { isActivatedMemberStatus } from "@/lib/user-status";
+import { copyTextToClipboard } from "@/lib/copy-text";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -19,49 +19,22 @@ const toUSD = (n: number) =>
     Number.isFinite(n) ? n : 0,
   );
 
-function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number, userId: string, onHistoryRedirect?: () => void }) {
-  const [depositAmount, setDepositAmount] = useState<string>("10");
+function WalletSection({
+  balance,
+  userId,
+  receiverWalletAddress,
+  onHistoryRedirect,
+}: {
+  balance: number;
+  userId: string;
+  receiverWalletAddress: string;
+  onHistoryRedirect?: () => void;
+}) {
   const [step, setStep] = useState<1 | 2>(1);
   const [uiMsg, setUiMsg] = useState<string>("");
-  const autoPollRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (step !== 2) {
-      if (autoPollRef.current) {
-        clearInterval(autoPollRef.current);
-        autoPollRef.current = null;
-      }
-      return;
-    }
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/scan-deposits?userId=${encodeURIComponent(userId)}`, { cache: "no-store" });
-        const data = await res.json();
-        if (res.ok && Number(data?.createdForUser || 0) > 0) {
-          toast.success("Payment detected");
-          // Refresh full dashboard data
-          try {
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new Event("deposit:updated"));
-            }
-          } catch {}
-          if (onHistoryRedirect) onHistoryRedirect();
-          clearInterval(autoPollRef.current);
-          autoPollRef.current = null;
-        }
-      } catch {
-        // silent
-      }
-    };
-    poll();
-    autoPollRef.current = setInterval(poll, 15000);
-    return () => {
-      if (autoPollRef.current) {
-        clearInterval(autoPollRef.current);
-        autoPollRef.current = null;
-      }
-    };
-  }, [step, userId, onHistoryRedirect]);
+  const [depositTxId, setDepositTxId] = useState("");
+  const [verifyingTx, setVerifyingTx] = useState(false);
+  const [verifiedAmount, setVerifiedAmount] = useState<number | null>(null);
 
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
@@ -69,17 +42,8 @@ function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number
         {step === 1 ? (
           <div className="w-full">
             <div className="text-lg font-semibold">Deposit Funds</div>
-            <div className="mt-1 text-xs text-subtext">Secure gateway payment</div>
+            <div className="mt-1 text-xs text-subtext">Send real USDT on BEP20, then submit your TX ID for verification</div>
             <div className="mt-4 grid gap-3 max-w-full lg:max-w-md">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">Deposit Amount (USDT)</span>
-                <input
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="h-10 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="10"
-                />
-              </label>
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">Select Network</span>
                 <select
@@ -91,21 +55,19 @@ function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number
                   <option value="bep20">BEP20 (BSC)</option>
                 </select>
               </label>
+              <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
+                Minimum deposit is <span className="font-semibold text-foreground">10 {RECEIVER_WALLET_TOKEN}</span>. The
+                amount will be read from the blockchain after you submit the TX ID.
+              </div>
               <button
                 type="button"
                 onClick={() => {
-                  const amt = Number(depositAmount);
-                  if (!Number.isFinite(amt) || amt < 10) {
-                    setUiMsg("Minimum deposit is 10 USDT");
-                    toast.error("Minimum deposit is 10 USDT");
-                    return;
-                  }
                   setUiMsg("");
                   setStep(2);
                 }}
                 className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-green-600 px-5 text-sm font-medium text-white shadow-sm ring-1 ring-green-600/20 transition hover:bg-green-700"
               >
-                Proceed Payment
+                Continue
               </button>
               {uiMsg ? (
                 <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{uiMsg}</div>
@@ -115,52 +77,110 @@ function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number
         ) : (
           <div className="w-full">
             <div className="text-lg font-semibold">Payment Details</div>
-            <div className="mt-1 text-xs text-subtext">Send payment to the fixed receiver wallet or use demo payment</div>
+            <div className="mt-1 text-xs text-subtext">Send USDT to the receiver address, then paste the BscScan TX ID below</div>
             <div className="mt-4 grid gap-3">
               <img
                 alt="Deposit QR"
                 src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-                  RECEIVER_WALLET_ADDRESS,
+                  receiverWalletAddress,
                 )}&size=180x180&margin=0`}
                 className="mx-auto h-[160px] w-[160px] rounded-lg ring-1 ring-ring"
               />
-              <div className="grid gap-2">
+              <div className="grid min-w-0 gap-2">
                 <div className="text-xs font-medium text-subtext">Receiver Address</div>
-                <div className="flex items-stretch gap-2">
-                  <div className="flex-1 break-all rounded-2xl bg-background p-3 text-sm font-mono ring-1 ring-ring">
-                    {RECEIVER_WALLET_ADDRESS}
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <div className="min-w-0 flex-1 cursor-text select-all overflow-hidden break-all rounded-2xl bg-background p-3 text-xs font-mono leading-relaxed ring-1 ring-ring sm:text-sm">
+                    {receiverWalletAddress}
                   </div>
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(RECEIVER_WALLET_ADDRESS);
-                          toast.success("Address copied");
-                        } catch {
-                          toast.error("Copy failed");
-                        }
-                      }}
-                      className="inline-flex h-10 items-center justify-center rounded-2xl bg-card px-3 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted"
-                      aria-label="Copy address"
-                    >
-                      Copy
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await copyTextToClipboard(receiverWalletAddress);
+                      if (ok) toast.success("Address copied");
+                      else toast.error("Copy failed — long-press the address to copy manually");
+                    }}
+                    className="inline-flex h-10 w-full shrink-0 items-center justify-center rounded-2xl bg-card px-3 text-xs font-medium text-foreground ring-1 ring-ring transition hover:bg-muted sm:w-auto sm:self-stretch"
+                    aria-label="Copy address"
+                  >
+                    Copy
+                  </button>
                 </div>
               </div>
               <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
-                Real blockchain deposits on {RECEIVER_WALLET_NETWORK} are auto-detected for the matched sender wallet. For testing, use the demo payment button below.
+                Deposit is verified securely from the blockchain. The TX ID must belong to a successful USDT transfer to this receiver address from your own saved wallet.
               </div>
-              <div className="mt-2">
-                <DepositButton
-                  amount={Number(depositAmount) || 10}
-                  userId={userId}
-                  fullWidth
-                  label="Pay Demo"
-                  onSuccess={onHistoryRedirect}
+              <label className="grid gap-2">
+                <span className="text-xs font-medium text-subtext">BscScan TX ID</span>
+                <input
+                  value={depositTxId}
+                  onChange={(e) => setDepositTxId(e.target.value.trim())}
+                  className="h-11 w-full rounded-2xl bg-background px-4 text-sm font-mono text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="0x..."
                 />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUiMsg("");
+                    setStep(1);
+                  }}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  disabled={verifyingTx}
+                  onClick={async () => {
+                    const txId = depositTxId.trim();
+                    if (!/^0x[a-fA-F0-9]{64}$/.test(txId)) {
+                      setUiMsg("Please enter valid TX ID.");
+                      toast.error("Please enter valid TX ID.");
+                      return;
+                    }
+                    setUiMsg("");
+                    setVerifyingTx(true);
+                    try {
+                      const res = await fetch("/api/verify-deposit", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ transactionHash: txId, userId }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        const msg = typeof data?.error === "string" ? data.error : "Please enter valid TX ID.";
+                        setUiMsg(msg);
+                        toast.error(msg);
+                        return;
+                      }
+                      const amount = Number(data?.amount ?? 0);
+                      if (Number.isFinite(amount) && amount > 0) {
+                        setVerifiedAmount(amount);
+                      }
+                      setDepositTxId("");
+                      toast.success("Deposit verified successfully");
+                      try {
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new Event("deposit:updated"));
+                        }
+                      } catch {}
+                      if (onHistoryRedirect) onHistoryRedirect();
+                    } catch {
+                      setUiMsg("Please enter valid TX ID.");
+                      toast.error("Please enter valid TX ID.");
+                    } finally {
+                      setVerifyingTx(false);
+                    }
+                  }}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {verifyingTx ? "Verifying..." : "Verify TX ID"}
+                </button>
               </div>
+              {uiMsg ? (
+                <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{uiMsg}</div>
+              ) : null}
             </div>
           </div>
         )}
@@ -173,13 +193,15 @@ function WalletSection({ balance, userId, onHistoryRedirect }: { balance: number
             </div>
             <div className="flex items-center justify-between">
               <span className="text-subtext">Amount</span>
-              <span className="font-semibold">{Number(depositAmount) || 0} {RECEIVER_WALLET_TOKEN}</span>
+              <span className="font-semibold">
+                {verifiedAmount != null ? `${verifiedAmount.toFixed(2)} ${RECEIVER_WALLET_TOKEN}` : "From TX ID"}
+              </span>
             </div>
           </div>
           {step === 2 && (
             <div className="mt-4 rounded-xl bg-card p-3 text-center ring-1 ring-ring">
-              <div className="text-xs text-subtext">Please deposit</div>
-              <div className="mt-1 text-xl font-bold">{Number(depositAmount)} USDT</div>
+              <div className="text-xs text-subtext">Verification</div>
+              <div className="mt-1 text-xl font-bold">{verifyingTx ? "Checking..." : "Awaiting TX ID"}</div>
             </div>
           )}
         </div>
@@ -1077,11 +1099,11 @@ function NetworkTree({ nodes, onCopyMessage }: { nodes: any[], onCopyMessage: (m
                     onClick={async (e) => {
                       e.stopPropagation();
                       const text = origin ? `${origin}/?ref=${pt.node.referrerCode}` : pt.node.referrerCode;
-                      try {
-                        await navigator.clipboard.writeText(text);
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) {
                         onCopyMessage(`Copied ${(pt.node.email === COMPANY_ADMIN_EMAIL ? "Admin" : pt.node.username)}'s referral link`);
                         toast.success("Referral link copied");
-                      } catch {
+                      } else {
                         onCopyMessage("Copy failed");
                         toast.error("Copy failed");
                       }
@@ -1227,6 +1249,7 @@ export default function UserDashboardPage() {
   const [supportMessage, setSupportMessage] = useState("");
   const [uiMessage, setUiMessage] = useState("");
   const [origin, setOrigin] = useState("");
+  const [receiverWalletAddress, setReceiverWalletAddress] = useState(DEFAULT_RECEIVER_WALLET_ADDRESS);
   const [linkCopied, setLinkCopied] = useState(false);
   const [openLevels, setOpenLevels] = useState<number[]>([]);
   const [totals, setTotals] = useState<{
@@ -1404,6 +1427,21 @@ export default function UserDashboardPage() {
   useEffect(() => {
     const o = typeof window !== "undefined" ? window.location.origin : "";
     setOrigin(o);
+  }, []);
+
+  useEffect(() => {
+    const loadPublicSettings = async () => {
+      try {
+        const res = await fetch("/api/public/settings", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok && typeof data?.receiverWalletAddress === "string" && data.receiverWalletAddress.trim()) {
+          setReceiverWalletAddress(data.receiverWalletAddress.trim());
+        }
+      } catch {
+        /* keep fallback */
+      }
+    };
+    loadPublicSettings().catch(() => undefined);
   }, []);
 
   const refreshDashboardData = async () => {
@@ -1629,11 +1667,11 @@ export default function UserDashboardPage() {
     <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-transparent text-foreground">
       <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6">
         <div className="flex w-full min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={handleMenuToggle}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:hidden"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:hidden"
               aria-label="Open menu"
             >
               ☰
@@ -1641,62 +1679,72 @@ export default function UserDashboardPage() {
             <button
               type="button"
               onClick={handleMenuToggle}
-              className="hidden h-10 w-10 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:inline-flex"
+              className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] hover:bg-muted lg:inline-flex"
               aria-label="Toggle sidebar"
               title="Toggle sidebar"
             >
               {sidebarCollapsed ? "›" : "‹"}
             </button>
-              <div className="flex min-w-0 items-center gap-3">
-                <img src="/logo.svg" alt="Logo" className="h-7 w-auto rounded-md ring-1 ring-ring" />
-              </div>
+            <div className="flex min-w-0 items-center">
+              <img src="/logo.svg" alt="Logo" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
+            </div>
           </div>
-          <div className="relative flex min-w-0 items-center gap-2" ref={userMenuRef}>
+          <div className="relative shrink-0" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 rounded-2xl p-1.5 transition hover:bg-muted"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+              aria-expanded={userMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
             >
-              <div className="min-w-0 text-right">
-                <div className="flex items-center justify-end gap-2">
-                  <div className="max-w-[120px] truncate text-sm font-medium sm:max-w-[180px]">{profile?.username ?? "User"}</div>
-                  {referralGate?.state === "unverified" ? (
-                    <span className="inline-block rounded-full bg-red-600 px-2.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-red-600/20">
-                      UNVERIFIED {gateTime}
-                    </span>
-                  ) : referralGate?.state === "verified" ? (
-                    <span className="inline-block rounded-full bg-green-600 px-2.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-green-600/20">
-                      VERIFIED
-                    </span>
-                  ) : null}
-                </div>
-                <div className="truncate text-[10px] sm:text-xs text-subtext">
-                  {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "-"}
-                </div>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20">
-                {initials}
-              </div>
+              {initials}
             </button>
 
             {userMenuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl bg-card p-1 shadow-xl ring-1 ring-ring animate-in fade-in slide-in-from-top-2 duration-200">
+              <div
+                className="absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),16rem)] min-w-[14rem] rounded-2xl bg-card p-2 shadow-xl ring-1 ring-ring animate-in fade-in slide-in-from-top-2 duration-200"
+                role="menu"
+              >
+                <div className="rounded-xl bg-muted/60 px-3 py-2.5 ring-1 ring-ring/50">
+                  <div className="truncate text-sm font-semibold text-foreground">{profile?.username ?? "User"}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {referralGate?.state === "unverified" ? (
+                      <span className="inline-flex flex-col rounded-md bg-red-600 px-2 py-0.5 text-[9px] font-semibold leading-tight text-white ring-1 ring-red-600/20">
+                        <span>UNVERIFIED</span>
+                        <span className="font-mono tabular-nums">{gateTime}</span>
+                      </span>
+                    ) : referralGate?.state === "verified" ? (
+                      <span className="inline-block rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-semibold text-white ring-1 ring-green-600/20">
+                        VERIFIED
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 break-all font-mono text-[11px] text-subtext">
+                    <span className="font-sans text-[10px] font-medium uppercase tracking-wide text-subtext">Ref code</span>
+                    <div className="mt-0.5 text-foreground">
+                      {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "—"}
+                    </div>
+                  </div>
+                </div>
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setActive("settings");
                     setUserMenuOpen(false);
                   }}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-foreground transition hover:bg-muted"
+                  className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-foreground transition hover:bg-muted"
                 >
                   <FaUserCircle className="text-primary" size={18} />
                   My Profile
                 </button>
-                <div className="my-1 border-t border-ring/50" />
+                <div className="my-1.5 border-t border-ring/50" />
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => signOut({ callbackUrl: "/" })}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10"
                 >
                   <FaSignOutAlt className="text-red-500" size={18} />
                   Logout
@@ -1864,12 +1912,12 @@ export default function UserDashboardPage() {
                     type="button"
                     onClick={async () => {
                       const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                      try {
-                        await navigator.clipboard.writeText(text);
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) {
                         setLinkCopied(true);
                         toast.success("Invite link copied");
                         setTimeout(() => setLinkCopied(false), 1200);
-                      } catch {
+                      } else {
                         setUiMessage("Copy failed");
                         toast.error("Copy failed");
                         setTimeout(() => setUiMessage(""), 1200);
@@ -1931,12 +1979,12 @@ export default function UserDashboardPage() {
                     type="button"
                     onClick={async () => {
                       const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                      try {
-                        await navigator.clipboard.writeText(text);
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) {
                         setLinkCopied(true);
                         toast.success("Invite link copied");
                         setTimeout(() => setLinkCopied(false), 1200);
-                      } catch {
+                      } else {
                         setUiMessage("Copy failed");
                         toast.error("Copy failed");
                         setTimeout(() => setUiMessage(""), 1200);
@@ -2005,6 +2053,22 @@ export default function UserDashboardPage() {
                   </div>
 
                   <div className="mt-6 grid gap-3 grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {isActivatedMemberStatus(profile?.status) && profile?.status !== "admin" ? (
+                    <div className="rounded-2xl bg-card p-4 sm:p-5 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] min-w-0">
+                      <div className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-subtext truncate">
+                        Current plan
+                      </div>
+                      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground truncate tabular-nums">
+                        $10
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex rounded-full bg-green-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-600 ring-1 ring-green-500/25 dark:text-green-400">
+                          Active
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-subtext">One-time · 20 levels</span>
+                      </div>
+                    </div>
+                  ) : null}
                   <StatCard label="Withdraw Wallet" value={toUSD(Number(profile?.withdrawBalance ?? 0))} />
                   <StatCard label="USDT Wallet (Main)" value={toUSD(Number(profile?.usdtBalance ?? 0))} />
                   <StatCard label="Total Income" value={toUSD(totals.commissionTotal)} />
@@ -2157,12 +2221,12 @@ export default function UserDashboardPage() {
                                         e.stopPropagation();
                                         const code = String(n.referrerCode ?? "");
                                         const text = origin ? `${origin}/?ref=${code}` : code;
-                                        try {
-                                          await navigator.clipboard.writeText(text);
+                                        const ok = await copyTextToClipboard(text);
+                                        if (ok) {
                                           setUiMessage("Referral link copied");
                                           toast.success("Referral link copied");
                                           setTimeout(() => setUiMessage(""), 1200);
-                                        } catch {
+                                        } else {
                                           setUiMessage("Copy failed");
                                           toast.error("Copy failed");
                                           setTimeout(() => setUiMessage(""), 1200);
@@ -2202,6 +2266,7 @@ export default function UserDashboardPage() {
               <WalletSection 
                 balance={profile?.balance ?? 0} 
                 userId={profile?.id ?? ""}
+                receiverWalletAddress={receiverWalletAddress}
                 onHistoryRedirect={() => {
                   setWalletTab("depositHistory");
                 }}
@@ -2781,8 +2846,8 @@ export default function UserDashboardPage() {
             className="absolute inset-0 bg-black/30"
             aria-label="Close menu"
           />
-          <div className="absolute left-0 top-0 h-full w-[84%] max-w-xs bg-card shadow-xl ring-1 ring-ring">
-            <div className="flex items-center justify-between px-4 py-4">
+          <div className="absolute left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-[min(100%,20rem)] max-w-[min(100vw-1rem,20rem)] flex-col overflow-hidden bg-card shadow-xl ring-1 ring-ring sm:w-[84%] sm:max-w-xs">
+            <div className="flex shrink-0 items-center justify-between px-4 py-4">
               <div className="text-sm font-semibold">Menu</div>
               <button
                 type="button"
@@ -2793,7 +2858,7 @@ export default function UserDashboardPage() {
                 ✕
               </button>
             </div>
-            <div className="px-3 pb-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
               <div className="grid gap-1">
                 {[
                   { key: "home", label: "Home" },
@@ -2903,8 +2968,7 @@ export default function UserDashboardPage() {
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="px-4 pb-6">
+              <div className="mt-4 border-t border-ring/40 px-1 pb-2 pt-4">
               <div className="text-xs text-subtext">
                 {referralGate?.state !== "unverified" && profile?.status !== "admin" && directReferrals >= 2 ? "User" : "Referral Link"}
               </div>
@@ -2933,11 +2997,11 @@ export default function UserDashboardPage() {
                     type="button"
                     onClick={async () => {
                       const text = origin ? `${origin}/?ref=${profile?.referrerCode ?? ""}` : profile?.referrerCode ?? "";
-                      try {
-                        await navigator.clipboard.writeText(text);
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) {
                         toast.success("Link copied");
                         setMobileNavOpen(false);
-                      } catch {
+                      } else {
                         toast.error("Copy failed");
                       }
                     }}
@@ -2955,6 +3019,7 @@ export default function UserDashboardPage() {
               >
                 Logout
               </button>
+              </div>
             </div>
           </div>
         </div>

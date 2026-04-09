@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
+import { DEFAULT_RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 
 const ADMIN_WALLET_USERS_POLL_MS = 8_000;
 
@@ -11,6 +11,7 @@ export default function AdminDashboardPage() {
   const { data: session, status } = useSession();
   const [users, setUsers] = useState<Array<{ id: string; username: string; email: string; walletAddress: string; status: string; downlineCount: number }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [receiverWalletAddress, setReceiverWalletAddress] = useState(DEFAULT_RECEIVER_WALLET_ADDRESS);
   const isAdmin = status === "authenticated" && session?.user?.status === "admin";
 
   const fetchWalletUsers = useCallback(async (silent = false) => {
@@ -33,6 +34,22 @@ export default function AdminDashboardPage() {
     if (!isAdmin) return;
     fetchWalletUsers(false).catch(() => undefined);
   }, [fetchWalletUsers, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const loadSettings = async () => {
+      try {
+        const res = await fetch("/api/admin/settings", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok && typeof data?.receiverWalletAddress === "string" && data.receiverWalletAddress.trim()) {
+          setReceiverWalletAddress(data.receiverWalletAddress.trim());
+        }
+      } catch {
+        /* keep fallback */
+      }
+    };
+    loadSettings().catch(() => undefined);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -76,7 +93,7 @@ export default function AdminDashboardPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-2xl font-bold">Command Center</div>
-            <div className="text-xs text-neutral-400">Receiver Wallet: {RECEIVER_WALLET_ADDRESS}</div>
+            <div className="text-xs text-neutral-400">Receiver Wallet: {receiverWalletAddress}</div>
           </div>
         </div>
 

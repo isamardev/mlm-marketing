@@ -3,10 +3,9 @@ import { createPublicClient, http, parseAbiItem, decodeEventLog } from "viem";
 import { bsc } from "viem/chains";
 import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
 import { getDb } from "@/lib/db";
-import { Prisma } from "@prisma/client";
 import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
-import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 import { formatUnits } from "viem";
+import { DepositVerificationError, finalizeVerifiedDeposit } from "@/lib/deposit-verification";
 
 export async function GET(req: Request) {
   try {
@@ -14,7 +13,7 @@ export async function GET(req: Request) {
     const userIdFilter = url.searchParams.get("userId") || "";
     const lookbackBlocks = Number(url.searchParams.get("lookback") || 500);
 
-    const receiverWalletAddress = getNormalizedReceiverWalletAddress();
+    const receiverWalletAddress = await getNormalizedReceiverWalletAddress();
     if (!receiverWalletAddress || !/^0x[a-fA-F0-9]{40}$/.test(receiverWalletAddress)) {
       return NextResponse.json({ error: "Receiver wallet not configured" }, { status: 500 });
     }
@@ -61,9 +60,6 @@ export async function GET(req: Request) {
       const txHash = lg.transactionHash;
       if (!txHash) continue;
 
-      const exists = await db.deposit.findUnique({ where: { txHash } });
-      if (exists) continue;
-
       let from = "";
       let to = "";
       let value: bigint | null = null;
@@ -93,24 +89,22 @@ export async function GET(req: Request) {
       });
       if (!user) continue;
 
-      await db.deposit.create({
-        data: {
+      try {
+        await finalizeVerifiedDeposit({
           userId: user.id,
-          chain: "BSC",
           txHash,
-          amount: new Prisma.Decimal(amountNum.toFixed(2)),
-          status: "confirmed",
-          verifiedAt: new Date(),
-        },
-      });
-      await runFixedPayoutEngine({
-        sourceUserId: user.id,
-        depositAmount: amountNum,
-        note: `Auto-detected deposit ${txHash}`,
-      });
-      createdCount += 1;
-      if (userIdFilter && user.id === userIdFilter) {
-        createdForUser += 1;
+          amount: Number(amountNum.toFixed(2)),
+          note: `Auto-detected deposit ${txHash}`,
+        });
+        createdCount += 1;
+        if (userIdFilter && user.id === userIdFilter) {
+          createdForUser += 1;
+        }
+      } catch (error) {
+        if (error instanceof DepositVerificationError && error.code === "DUPLICATE_TX") {
+          continue;
+        }
+        throw error;
       }
     }
 

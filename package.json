@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\"",
-    "dev": "next dev --turbo",
-    "dev:webpack": "next dev --webpack",
+    "dev": "set NEXT_DEV_SKIP_TS_SETUP_WRITE=1&& set NEXT_DEV_SKIP_APP_TYPE_WRITE=1&& node --require=./scripts/set-node-path.cjs --require=./scripts/next-fetch-guard.cjs ./node_modules/next/dist/bin/next dev --webpack -p 3000 -H 127.0.0.1",
+    "dev:turbo": "set NEXT_DEV_SKIP_TS_SETUP_WRITE=1&& set NEXT_DEV_SKIP_APP_TYPE_WRITE=1&& node --require=./scripts/set-node-path.cjs --require=./scripts/next-fetch-guard.cjs ./node_modules/next/dist/bin/next dev --turbo -p 3000 -H 127.0.0.1",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push --skip-generate",
     "db:reset": "prisma migrate reset --force --skip-seed",
     "build": "npx prisma generate && next build",
     "postinstall": "npx prisma generate",
-    "start": "next start",
+    "start": "node --require=./scripts/set-node-path.cjs ./node_modules/next/dist/bin/next start",
     "lint": "next lint"
   },
   "dependencies": {

@@ -4,6 +4,7 @@ import { signOut, useSession } from "next-auth/react";
 import { FaUser, FaSignOutAlt, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
+import { coalesceBep20ForSave } from "@/lib/receiver-wallet";
 
 type NavItem = {
   key: string;
@@ -394,6 +395,10 @@ export function AdminPanelClient() {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [receiverWalletAddress, setReceiverWalletAddress] = useState("");
+  const [savedReceiverWalletAddress, setSavedReceiverWalletAddress] = useState("");
+  /** Prevents background poll / refetch from overwriting WhatsApp + receiver fields while editing. */
+  const settingsDraftDirtyRef = useRef(false);
   const [levelsMsg, setLevelsMsg] = useState("");
   const [payoutMsg, setPayoutMsg] = useState("");
   const [payoutUserId, setPayoutUserId] = useState("");
@@ -698,18 +703,6 @@ export function AdminPanelClient() {
         );
       }
 
-      if (can("settings")) {
-        jobs.push(
-          (async () => {
-            const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
-            if (settingsRes.ok) {
-              const l = await settingsRes.json();
-              if (l?.whatsappNumber) setWhatsappNumber(l.whatsappNumber);
-            }
-          })(),
-        );
-      }
-
       if (can("withdrawals")) {
         jobs.push(
           (async () => {
@@ -747,6 +740,26 @@ export function AdminPanelClient() {
     session?.user?.status,
     status,
   ]);
+
+  const loadAdminSettings = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (status !== "authenticated") return;
+      if (!session?.user?.id || session.user.status !== "admin") return;
+      if (!canAdminSection("settings")) return;
+      if (!opts?.force && settingsDraftDirtyRef.current) return;
+      const settingsRes = await fetch("/api/admin/settings", { cache: "no-store" });
+      if (!settingsRes.ok) return;
+      const l = await settingsRes.json();
+      const nextWhatsapp = String(l?.whatsappNumber ?? "");
+      const nextReceiver = String(l?.receiverWalletAddress ?? "");
+      setSavedReceiverWalletAddress(nextReceiver);
+      if (!settingsDraftDirtyRef.current || opts?.force) {
+        setWhatsappNumber(nextWhatsapp);
+        setReceiverWalletAddress(nextReceiver);
+      }
+    },
+    [canAdminSection, session?.user?.id, session?.user?.status, status],
+  );
 
   const fetchPaymentHistory = useCallback(
     async (silent = false) => {
@@ -868,6 +881,20 @@ export function AdminPanelClient() {
     if (active !== "users") return;
     fetchAdminUsers(false).catch(() => undefined);
   }, [active, fetchAdminUsers, session?.user?.id, session?.user?.status, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    if (!canAdminSection("settings")) return;
+    loadAdminSettings({ force: true }).catch(() => undefined);
+  }, [canAdminSection, loadAdminSettings, session?.user?.id, session?.user?.status, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!session?.user?.id || session.user.status !== "admin") return;
+    if (active !== "settings") return;
+    loadAdminSettings({ force: true }).catch(() => undefined);
+  }, [active, loadAdminSettings, session?.user?.id, session?.user?.status, status]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1492,7 +1519,7 @@ export function AdminPanelClient() {
             ) : null}
 
             {active === "settings" ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
+              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-6 lg:p-8">
                 <div className="text-sm font-semibold">System Settings</div>
                 <div className="mt-2 text-sm text-subtext">Update global configurations</div>
                 
@@ -1502,11 +1529,54 @@ export function AdminPanelClient() {
                     <span className="text-xs font-medium text-subtext">WhatsApp Support Number (with country code, e.g., 923001234567)</span>
                     <input
                       value={whatsappNumber}
-                      onChange={(e) => setWhatsappNumber(e.target.value)}
+                      onPaste={() => {
+                        settingsDraftDirtyRef.current = true;
+                      }}
+                      onChange={(e) => {
+                        settingsDraftDirtyRef.current = true;
+                        setWhatsappNumber(e.target.value);
+                      }}
                       className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
                       placeholder="923001234567"
                     />
                   </label>
+                </div>
+
+                <div className="mt-4 min-w-0 p-3 sm:p-4 rounded-2xl bg-muted ring-1 ring-ring">
+                  <div className="text-sm font-medium mb-4">Receiver Address</div>
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-xs font-medium text-subtext">USDT BEP20 receiver address shared with all users</span>
+                    {savedReceiverWalletAddress ? (
+                      <div className="min-w-0 overflow-hidden rounded-2xl bg-background px-3 py-3 text-[11px] font-mono leading-relaxed text-subtext [overflow-wrap:anywhere] break-all ring-1 ring-ring sm:px-4 sm:text-xs">
+                        <span className="block text-[10px] font-sans font-medium text-subtext sm:inline sm:pr-1">
+                          Current saved:
+                        </span>
+                        {savedReceiverWalletAddress}
+                      </div>
+                    ) : null}
+                    <input
+                      type="text"
+                      name="cfg-value-1"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                      inputMode="text"
+                      value={receiverWalletAddress}
+                      onChange={(e) => {
+                        settingsDraftDirtyRef.current = true;
+                        setReceiverWalletAddress(e.target.value);
+                      }}
+                      className="h-11 w-full min-w-0 rounded-2xl bg-background px-3 text-xs font-mono text-foreground ring-1 ring-ring outline-none [overflow-wrap:anywhere] break-all focus:ring-2 focus:ring-primary/30 sm:px-4 sm:text-sm"
+                      placeholder="0x followed by 40 hex characters"
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-subtext">
+                    Users will see this same address on the deposit screen. Only a valid BEP20 address is allowed.
+                  </p>
                 </div>
 
                 {levelsMsg ? <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{levelsMsg}</div> : null}
@@ -1515,19 +1585,36 @@ export function AdminPanelClient() {
                     type="button"
                     onClick={async () => {
                       setLevelsMsg("");
+                      const nextReceiverWalletAddress = coalesceBep20ForSave(receiverWalletAddress);
+                      if (
+                        nextReceiverWalletAddress.length > 0 &&
+                        !BEP20_USDT_ADDRESS_RE.test(nextReceiverWalletAddress)
+                      ) {
+                        setLevelsMsg("Enter a valid BEP20 receiver address.");
+                        return;
+                      }
                       try {
                         const res = await fetch("/api/admin/settings", {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ 
-                            whatsappNumber: whatsappNumber.trim()
+                            whatsappNumber: whatsappNumber.trim(),
+                            receiverWalletAddress: nextReceiverWalletAddress,
                           }),
                         });
                         const data = await res.json();
                         if (!res.ok) {
+                          if (data?.error === "INVALID_RECEIVER_ADDRESS") {
+                            setLevelsMsg("Enter a valid BEP20 receiver address.");
+                            return;
+                          }
                           setLevelsMsg(typeof data?.error === "string" ? data.error : "Save failed");
                           return;
                         }
+                        settingsDraftDirtyRef.current = false;
+                        const saved = String(data?.receiverWalletAddress ?? nextReceiverWalletAddress);
+                        setReceiverWalletAddress(saved);
+                        setSavedReceiverWalletAddress(saved);
                         setLevelsMsg("Saved");
                       } catch {
                         setLevelsMsg("Save failed");

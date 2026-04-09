@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/lib/db";
 import { requireAdminSection } from "@/lib/admin-api-guard";
-import { Prisma } from "@prisma/client";
-import { runFixedPayoutEngine } from "@/lib/mlm-logic";
+import { DepositVerificationError, finalizeVerifiedDeposit, INVALID_DEPOSIT_TX_MESSAGE } from "@/lib/deposit-verification";
 
 const schema = z.object({
   sourceUserId: z.string().min(10),
@@ -34,50 +32,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const db = getDb();
     const txHash = parsed.data.txHash.trim();
-
-    const existing = await db.deposit.findUnique({ where: { txHash } });
-    if (existing?.status === "confirmed") {
-      return NextResponse.json({ error: "Duplicate txHash" }, { status: 409 });
-    }
-
-    const created = await db.deposit.upsert({
-      where: { txHash },
-      create: {
-        userId: parsed.data.sourceUserId,
-        txHash,
-        amount: new Prisma.Decimal(parsed.data.amount.toFixed(2)),
-        chain: parsed.data.chain,
-        status: "pending",
-      },
-      update: {
-        userId: parsed.data.sourceUserId,
-        amount: new Prisma.Decimal(parsed.data.amount.toFixed(2)),
-        chain: parsed.data.chain,
-        status: existing?.status === "rejected" ? "pending" : existing?.status ?? "pending",
-      },
-    });
 
     const verify = await verifyOnBscScan(txHash);
     if (!verify.verified && process.env.BSCSCAN_API_KEY) {
-      await db.deposit.update({ where: { id: created.id }, data: { status: "rejected" } });
       return NextResponse.json({ error: "Hash not verified on BscScan" }, { status: 400 });
     }
 
-    const payout = await runFixedPayoutEngine({
-      sourceUserId: parsed.data.sourceUserId,
-      depositAmount: parsed.data.amount,
+    const result = await finalizeVerifiedDeposit({
+      userId: parsed.data.sourceUserId,
+      txHash,
+      amount: parsed.data.amount,
       note: `Deposit hash ${txHash}`,
     });
 
-    await db.deposit.update({
-      where: { id: created.id },
-      data: { status: "confirmed", verifiedAt: new Date() },
+    return NextResponse.json({
+      success: true,
+      deposit: { id: result.deposit.id, txHash, status: "confirmed" },
+      payout: result.payout,
+      bscScan: verify.raw,
     });
-
-    return NextResponse.json({ success: true, deposit: { id: created.id, txHash, status: "confirmed" }, payout, bscScan: verify.raw });
-  } catch {
+  } catch (error) {
+    if (error instanceof DepositVerificationError) {
+      return NextResponse.json(
+        { error: error.code === "DUPLICATE_TX" ? INVALID_DEPOSIT_TX_MESSAGE : error.message },
+        { status: error.code === "DUPLICATE_TX" ? 409 : 400 },
+      );
+    }
     return NextResponse.json({ error: "Verify hash failed" }, { status: 500 });
   }
 }

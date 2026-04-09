@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { getDb } from "@/lib/db";
-import { Prisma } from "@prisma/client";
-import { runFixedPayoutEngine } from "@/lib/mlm-logic";
+import { finalizeVerifiedDeposit } from "@/lib/deposit-verification";
 
 const schema = z.object({
   sourceUserId: z.string().min(12),
@@ -28,41 +26,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const db = getDb();
     const txHash = `demo:${Date.now()}:${parsed.data.sourceUserId}`;
-    const deposit = await db.deposit.create({
-      data: {
-        userId: parsed.data.sourceUserId,
-        chain: "BSC",
-        txHash,
-        amount: new Prisma.Decimal(parsed.data.amount.toFixed(2)),
-        status: "pending",
-      },
-      select: { id: true },
-    });
-
-    // Increment user USDT wallet (fallback to raw SQL if column missing)
-    try {
-      await db.user.update({
-        where: { id: parsed.data.sourceUserId },
-        data: { usdtBalance: { increment: new Prisma.Decimal(parsed.data.amount.toFixed(2)) } } as any,
-      });
-    } catch (e) {
-      try {
-        await db.$executeRawUnsafe(
-          `ALTER TABLE "User" ADD COLUMN "usdtBalance" DECIMAL(18,2) DEFAULT 0`
-        );
-      } catch {}
-      await db.$executeRawUnsafe(
-        `UPDATE "User" SET "usdtBalance" = COALESCE("usdtBalance", 0) + $1 WHERE id = $2`,
-        Number(parsed.data.amount.toFixed(2)),
-        parsed.data.sourceUserId
-      );
-    }
-
-    await db.deposit.update({
-      where: { txHash },
-      data: { status: "confirmed", verifiedAt: new Date() },
+    await finalizeVerifiedDeposit({
+      userId: parsed.data.sourceUserId,
+      txHash,
+      amount: Number(parsed.data.amount.toFixed(2)),
+      note: parsed.data.note || "Demo deposit",
     });
 
     return NextResponse.json({ success: true });
