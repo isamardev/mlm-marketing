@@ -5,11 +5,15 @@ import path from "node:path";
 const projectRoot = path.resolve(process.cwd());
 
 /**
- * Custom distDir only for local Windows dev. Vercel/CI must use `.next` or Next injects broken
- * `tsconfig` include paths (and TypeScript fails on `next/dist/lib/metadata/...`).
+ * Temp distDir only when `NEXT_USE_TEMP_DIST=1` (set by `npm run dev` on Windows).
+ * `next build` / `next start` always use the default `.next` in the repo so they never disagree.
+ * Vercel must not use a custom distDir (broken `tsconfig` includes).
  */
-function distDirLocalWindowsOnly(): string | undefined {
-  if (process.env.VERCEL === "1" || Boolean(process.env.CI)) {
+function distDirWindowsTempDevOnly(): string | undefined {
+  if (process.env.VERCEL === "1") {
+    return undefined;
+  }
+  if (process.env.NEXT_USE_TEMP_DIST !== "1") {
     return undefined;
   }
   if (process.platform !== "win32") {
@@ -19,14 +23,20 @@ function distDirLocalWindowsOnly(): string | undefined {
   if (!localAppData) {
     return undefined;
   }
-  return path.join(localAppData, "Temp", "mlm-marketing-next");
+  const tempAbs = path.join(localAppData, "Temp", "mlm-marketing-next");
+  // Must be relative to the project root. An absolute `distDir` gets joined with `cwd` inside
+  // Next/webpack and becomes `repo\C:\Users\...` on Windows (ENOENT on mkdir).
+  const rel = path.relative(projectRoot, tempAbs);
+  if (!rel || path.isAbsolute(rel)) {
+    return undefined;
+  }
+  return rel;
 }
 
-const distDir = distDirLocalWindowsOnly();
+const distDir = distDirWindowsTempDevOnly();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  /** Windows local dev: build under Local\\Temp; Vercel uses default `.next`. */
   ...(distDir ? { distDir } : {}),
   outputFileTracingRoot: projectRoot,
   /** Polling helps file watchers on Windows (slow/locked drives, Defender). */
