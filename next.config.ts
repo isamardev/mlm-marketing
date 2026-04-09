@@ -4,11 +4,30 @@ import path from "node:path";
 /** Run `npm run dev` from the repo root. Pins tracing when multiple lockfiles exist up-tree. */
 const projectRoot = path.resolve(process.cwd());
 
+/**
+ * Custom distDir only for local Windows dev. Vercel/CI must use `.next` or Next injects broken
+ * `tsconfig` include paths (and TypeScript fails on `next/dist/lib/metadata/...`).
+ */
+function distDirLocalWindowsOnly(): string | undefined {
+  if (process.env.VERCEL === "1" || Boolean(process.env.CI)) {
+    return undefined;
+  }
+  if (process.platform !== "win32") {
+    return undefined;
+  }
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) {
+    return undefined;
+  }
+  return path.join(localAppData, "Temp", "mlm-marketing-next");
+}
+
+const distDir = distDirLocalWindowsOnly();
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  /** Windows workaround: this machine's Node runtime can't create files inside the repo reliably. */
-  /** Server bundles load from here; `scripts/set-node-path.cjs` (via npm scripts) so `react` resolves. */
-  distDir: "../../../AppData/Local/Temp/mlm-marketing-next",
+  /** Windows local dev: build under Local\\Temp; Vercel uses default `.next`. */
+  ...(distDir ? { distDir } : {}),
   outputFileTracingRoot: projectRoot,
   /** Polling helps file watchers on Windows (slow/locked drives, Defender). */
   watchOptions: {
