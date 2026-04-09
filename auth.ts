@@ -14,7 +14,12 @@ const credentialsSchema = z.object({
   staffRoleLogin: z.string().optional(),
 });
 
+/**
+ * trustHost: required on Vercel / HTTPS proxies so Auth.js accepts the incoming Host header.
+ * Set AUTH_SECRET + DATABASE_URL (+ optional AUTH_URL) in the Vercel project env.
+ */
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   session: {
     strategy: "jwt",
   },
@@ -119,12 +124,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.userId as string;
       session.user.status = (token.status as string) ?? "active";
       const email = typeof token.email === "string" ? token.email : session.user.email;
-      const perms = await resolveAdminPermissionsForUser(
-        token.userId as string,
-        email,
-      );
-      session.user.adminFullAccess = perms.fullAccess;
-      session.user.adminAllowedSections = perms.sections;
+      try {
+        const perms = await resolveAdminPermissionsForUser(
+          token.userId as string,
+          email,
+        );
+        session.user.adminFullAccess = perms.fullAccess;
+        session.user.adminAllowedSections = perms.sections;
+      } catch (e) {
+        console.error("[auth] session permissions:", e);
+        session.user.adminFullAccess = false;
+        session.user.adminAllowedSections = [];
+      }
       return session;
     },
   },
