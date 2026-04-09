@@ -9,7 +9,7 @@
     "db:generate": "npx prisma generate && node scripts/link-prisma-client.cjs",
     "db:push": "npx prisma db push --skip-generate",
     "db:reset": "prisma migrate reset --force --skip-seed",
-    "build": "npx prisma generate && node scripts/link-prisma-client.cjs && next build",
+    "build": "npx prisma generate && node scripts/link-prisma-client.cjs && next build --webpack",
     "postinstall": "npx prisma generate && node scripts/link-prisma-client.cjs",
     "start": "node --require=./scripts/set-node-path.cjs ./node_modules/next/dist/bin/next start",
     "lint": "next lint"
