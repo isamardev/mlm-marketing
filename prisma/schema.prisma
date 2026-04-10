@@ -1,4 +1,5 @@
-// Client outside node_modules avoids Windows EPERM unlink under node_modules/.prisma/client.
+// Generate into `generated/` (avoids Windows EPERM on `node_modules/.prisma`), then `scripts/copy-prisma-client.cjs`
+// copies into `node_modules/.prisma/client` — real files (not symlinks) so Vercel bundles `@prisma/client` correctly.
 generator client {
   provider   = "prisma-client-js"
   engineType = "wasm"
