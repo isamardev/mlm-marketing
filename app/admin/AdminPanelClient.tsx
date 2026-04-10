@@ -62,7 +62,6 @@ const navItems: NavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
   { key: "deposits", label: "Deposits" },
-  { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
   { key: "roles", label: "Roles" },
 ];
@@ -71,7 +70,6 @@ const ROLE_CHECKBOX_OPTIONS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
   { key: "deposits", label: "Deposits" },
-  { key: "payouts", label: "Payouts" },
   { key: "settings", label: "Settings" },
   { key: "withdrawals", label: "Withdrawals" },
   { key: "payments", label: "Payment History" },
@@ -400,10 +398,6 @@ export function AdminPanelClient() {
   /** Prevents background poll / refetch from overwriting WhatsApp + receiver fields while editing. */
   const settingsDraftDirtyRef = useRef(false);
   const [levelsMsg, setLevelsMsg] = useState("");
-  const [payoutMsg, setPayoutMsg] = useState("");
-  const [payoutUserId, setPayoutUserId] = useState("");
-  const [payoutAmount, setPayoutAmount] = useState("");
-  const [payoutHash, setPayoutHash] = useState("");
   const [adminTreeNodes, setAdminTreeNodes] = useState<any[]>([]);
   const [origin, setOrigin] = useState("");
   const [adminUiMsg, setAdminUiMsg] = useState("");
@@ -507,7 +501,6 @@ export function AdminPanelClient() {
       "overview",
       "users",
       "deposits",
-      "payouts",
       "settings",
       "withdrawPending",
       "payments",
@@ -685,7 +678,7 @@ export function AdminPanelClient() {
             const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
             if (statsRes.ok) {
               const s = await statsRes.json();
-              if (typeof s?.totalUsers === "number") setStats(s);
+              if (s && typeof s === "object" && !("error" in s && s.error)) setStats(s);
             } else {
               console.error("Stats API failed:", await statsRes.text());
             }
@@ -1121,32 +1114,47 @@ export function AdminPanelClient() {
                       <div className="text-sm text-subtext">Overview</div>
                       <div className="mt-1 text-2xl font-semibold">System snapshot</div>
                       <div className="mt-2 max-w-2xl text-sm text-subtext">
-                        Live admin APIs enabled: stats, settings, users, deposit verify, and payouts.
+                        Live admin APIs enabled: stats, settings, users, and deposits.
+                        {stats?.statsDay?.label ? (
+                          <span className="mt-1 block text-xs">
+                            “Today” for commission totals: {stats.statsDay.label}
+                            {stats.statsDay.timeZone ? ` (${stats.statsDay.timeZone})` : ""}.
+                          </span>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canAdminSection("payouts") ? (
-                        <button
-                          type="button"
-                          onClick={() => setActive("payouts")}
-                          className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full sm:w-auto"
-                        >
-                          Verify Deposit
-                        </button>
-                      ) : null}
-                    </div>
                   </div>
-                  <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    <StatCard label="Active users" value={String(stats?.totalUsers ?? 0)} />
-                    <StatCard label="Total Deposits" value={toUSD(Number(stats?.totalDeposits ?? 0))} />
-                    <StatCard label="My Commission Wallet" value={toUSD(Number(stats?.adminCommissionWallet ?? 0))} />
-                    <StatCard label="All User Wallet" value={toUSD(Number(stats?.allUserWallet ?? 0))} />
-                    <StatCard label="All User Withdraw" value={toUSD(Number(stats?.allUserWithdraw ?? 0))} />
-                    <StatCard label="Platform Fee Pool" value={toUSD(Number(stats?.platformFeePool ?? 0))} />
-                    <StatCard label="Charity" value={toUSD(Number(stats?.charityTotal ?? 0))} />
-                    <StatCard label="Available Balance" value={toUSD(Number(stats?.availableBalance ?? 0))} />
-                    <StatCard label="Today Earning" value={toUSD(Number(stats?.todayEarning ?? 0))} />
-                    <StatCard label="System Balance" value={toUSD(Number(stats?.systemBalance ?? 0))} />
+                  <div className="mt-6 space-y-6">
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                      <StatCard
+                        label="Admin wallet total"
+                        value={toUSD(
+                          Number(stats?.adminWalletTotal ?? stats?.availableBalance ?? stats?.adminCommissionWallet ?? 0),
+                        )}
+                      />
+                      <StatCard
+                        label="Today's commission → admin accounts"
+                        value={toUSD(Number(stats?.todayCommissionToAdmin ?? 0))}
+                      />
+                      <StatCard
+                        label="Admin commission (lifetime, admin rows only)"
+                        value={toUSD(Number(stats?.adminLedgerCommissionsLifetime ?? 0))}
+                      />
+                    </div>
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      <StatCard label="Active users" value={String(stats?.totalUsers ?? 0)} />
+                      <StatCard label="Total deposit" value={toUSD(Number(stats?.totalDeposits ?? 0))} />
+                      <StatCard label="All user wallets" value={toUSD(Number(stats?.allUserWallet ?? 0))} />
+                      <StatCard label="All user withdrawals (approved)" value={toUSD(Number(stats?.allUserWithdraw ?? 0))} />
+                      <StatCard label="Platform fee pool" value={toUSD(Number(stats?.platformFeePool ?? 0))} />
+                      <StatCard label="Charity" value={toUSD(Number(stats?.charityTotal ?? 0))} />
+                      <StatCard
+                        label="System balance"
+                        value={toUSD(
+                          Number(stats?.totalWalletBalances ?? stats?.systemBalance ?? 0),
+                        )}
+                      />
+                    </div>
                   </div>
                 </div>
               </>
@@ -1438,83 +1446,6 @@ export function AdminPanelClient() {
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
-
-            {active === "payouts" ? (
-              <div className="w-full max-w-full overflow-hidden rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8">
-                <div className="text-sm font-semibold">Verify Deposit Hash</div>
-                <div className="mt-1 text-sm text-subtext">Admin-only: dedupe + optional BscScan verify + payout trigger</div>
-                <form
-                  className="mt-4 grid gap-3"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    setPayoutMsg("");
-                    try {
-                      const res = await fetch("/api/admin/verify-hash", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          sourceUserId: payoutUserId,
-                          txHash: payoutHash,
-                          amount: Number(payoutAmount),
-                          chain: "BSC",
-                        }),
-                      });
-                      const data = await res.json();
-                      if (!res.ok) {
-                        console.error("[admin verify-hash]", data);
-                        setPayoutMsg(ADMIN_TOAST_GENERIC);
-                        toastAdminApiError(data);
-                        return;
-                      }
-                      setPayoutMsg("Verified and payout processed");
-                      toast.success("Verified and payout processed");
-                    } catch (e) {
-                      console.error("[admin verify-hash]", e);
-                      setPayoutMsg(ADMIN_TOAST_GENERIC);
-                      toast.error(ADMIN_TOAST_GENERIC);
-                    }
-                  }}
-                >
-                  <label className="grid gap-2">
-                    <span className="text-xs font-medium text-subtext">User ID</span>
-                    <input
-                      required
-                      value={payoutUserId}
-                      onChange={(e) => setPayoutUserId(e.target.value)}
-                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="cuid..."
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-xs font-medium text-subtext">Transaction Hash</span>
-                    <input
-                      required
-                      value={payoutHash}
-                      onChange={(e) => setPayoutHash(e.target.value)}
-                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="0x..."
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-xs font-medium text-subtext">Amount</span>
-                    <input
-                      required
-                      value={payoutAmount}
-                      onChange={(e) => setPayoutAmount(e.target.value)}
-                      className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="100"
-                    />
-                  </label>
-                  {payoutMsg ? <div className="rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{payoutMsg}</div> : null}
-                  <button
-                    type="submit"
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90 w-full"
-                  >
-                    Verify + Payout
-                  </button>
-                </form>
               </div>
             ) : null}
 

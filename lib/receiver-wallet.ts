@@ -54,14 +54,7 @@ export async function readWhatsAppAndReceiverFromDb(db: PrismaClient): Promise<{
       MLM_SETTINGS_KEY,
     )) as Row[];
   } catch {
-    try {
-      rows = (await db.$queryRawUnsafe(
-        `SELECT whatsapp, receiverWalletAddress FROM Setting WHERE key = $1 LIMIT 1`,
-        MLM_SETTINGS_KEY,
-      )) as Row[];
-    } catch {
-      return { whatsapp: "", receiverWalletAddress: "" };
-    }
+    return { whatsapp: "", receiverWalletAddress: "" };
   }
   const row = rows[0];
   if (!row) return { whatsapp: "", receiverWalletAddress: "" };
@@ -71,16 +64,9 @@ export async function readWhatsAppAndReceiverFromDb(db: PrismaClient): Promise<{
   return { whatsapp: w, receiverWalletAddress };
 }
 
-/** Raw SQL without quotes targeted PostgreSQL's `receiverwalletaddress` column; Prisma maps `"receiverWalletAddress"`. */
-export async function migrateLegacyReceiverWalletColumn(db: PrismaClient) {
-  try {
-    await db.$executeRawUnsafe(
-      `UPDATE "Setting" SET "receiverWalletAddress" = TRIM(receiverwalletaddress::text) WHERE "key" = $1 AND TRIM(COALESCE("receiverWalletAddress"::text, '')) = '' AND TRIM(COALESCE(receiverwalletaddress::text, '')) <> ''`,
-      MLM_SETTINGS_KEY,
-    );
-  } catch {
-    /* legacy column absent */
-  }
+/** Legacy MySQL lowercase column migration — skip on PostgreSQL (no `receiverwalletaddress` column). */
+export async function migrateLegacyReceiverWalletColumn(_db: PrismaClient) {
+  /* no-op: PG uses quoted "receiverWalletAddress" only; old SQL referenced receiverwalletaddress and errored + spammed logs */
 }
 
 /** Persist settings fields via raw SQL (avoids Prisma WASM / client drift on optional columns). */
@@ -89,19 +75,11 @@ export async function writeWhatsAppAndReceiverToDb(
   opts: { whatsapp?: string; receiverWalletAddress?: string | null },
 ) {
   if (opts.whatsapp !== undefined) {
-    try {
-      await db.$executeRawUnsafe(
-        `UPDATE "Setting" SET "whatsapp" = $1 WHERE "key" = $2`,
-        opts.whatsapp,
-        MLM_SETTINGS_KEY,
-      );
-    } catch {
-      await db.$executeRawUnsafe(
-        `UPDATE Setting SET whatsapp = $1 WHERE key = $2`,
-        opts.whatsapp,
-        MLM_SETTINGS_KEY,
-      );
-    }
+    await db.$executeRawUnsafe(
+      `UPDATE "Setting" SET "whatsapp" = $1 WHERE "key" = $2`,
+      opts.whatsapp,
+      MLM_SETTINGS_KEY,
+    );
   }
   if (opts.receiverWalletAddress !== undefined) {
     const v = opts.receiverWalletAddress;
@@ -110,15 +88,6 @@ export async function writeWhatsAppAndReceiverToDb(
       v,
       MLM_SETTINGS_KEY,
     );
-    try {
-      await db.$executeRawUnsafe(
-        `UPDATE Setting SET receiverWalletAddress = $1 WHERE key = $2`,
-        v,
-        MLM_SETTINGS_KEY,
-      );
-    } catch {
-      /* legacy lowercase column absent */
-    }
   }
 }
 

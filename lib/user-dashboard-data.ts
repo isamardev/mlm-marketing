@@ -70,6 +70,10 @@ export async function getUserDashboardPayload(
       referredById: true,
       withdrawSuspendSource: true,
       lastDownlineActivityAt: true,
+      withdrawBalance: true,
+      usdtBalance: true,
+      permanentWithdrawAddress: true,
+      securityCode: true,
     },
   });
 
@@ -77,66 +81,12 @@ export async function getUserDashboardPayload(
     return { success: false, status: 404, error: "User not found" };
   }
 
-  let withdrawBalance = 0;
-  let usdtBalance = 0;
-  let permanentWithdrawAddress: string | null = null;
-
-  try {
-    const rows: any[] = await db.$queryRawUnsafe(
-      `SELECT "withdrawBalance", "usdtBalance", "permanentWithdrawAddress" FROM "User" WHERE id = $1`,
-      userId,
-    );
-
-    if (rows && rows.length > 0) {
-      const row = rows[0];
-      withdrawBalance = Number(row.withdrawBalance ?? row.withdrawbalance ?? 0);
-      usdtBalance = Number(row.usdtBalance ?? row.usdtbalance ?? 0);
-      permanentWithdrawAddress = row.permanentWithdrawAddress ?? row.permanentwithdrawaddress ?? null;
-    }
-  } catch {
-    try {
-      const rows: any[] = await db.$queryRawUnsafe(
-        `SELECT withdrawbalance, usdtbalance, permanentwithdrawaddress FROM "User" WHERE id = $1`,
-        userId,
-      );
-      if (rows && rows.length > 0) {
-        const row = rows[0];
-        withdrawBalance = Number(row.withdrawbalance ?? 0);
-        usdtBalance = Number(row.usdtbalance ?? 0);
-        permanentWithdrawAddress = row.permanentwithdrawaddress ?? null;
-      }
-    } catch {
-      try {
-        const rows: any[] = await db.$queryRawUnsafe(`SELECT * FROM "User" WHERE id = $1`, userId);
-        if (rows && rows[0]) {
-          const r = rows[0];
-          withdrawBalance = Number(r.withdrawBalance ?? r.withdrawbalance ?? 0);
-          usdtBalance = Number(r.usdtBalance ?? r.usdtbalance ?? 0);
-          permanentWithdrawAddress = r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? null;
-        }
-      } catch {
-        /* silent */
-      }
-    }
-  }
-
+  const withdrawBalance = Number(user.withdrawBalance ?? 0);
+  const usdtBalance = Number(user.usdtBalance ?? 0);
+  let permanentWithdrawAddress: string | null = user.permanentWithdrawAddress ?? null;
   if (permanentWithdrawAddress === "") permanentWithdrawAddress = null;
 
-  let hasSecurityCode = false;
-  try {
-    const u: any = await db.user.findUnique({
-      where: { id: userId },
-      select: { securityCode: true },
-    });
-    hasSecurityCode = !!u?.securityCode;
-  } catch {
-    try {
-      const rows: any[] = await db.$queryRawUnsafe(`SELECT "securityCode" FROM "User" WHERE id = $1`, userId);
-      hasSecurityCode = !!rows[0]?.securityCode;
-    } catch {
-      /* silent */
-    }
-  }
+  const hasSecurityCode = !!user.securityCode;
 
   const maskedProfile = {
     ...user,
@@ -176,51 +126,75 @@ export async function getUserDashboardPayload(
   const utcDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const utcDayEnd = new Date(utcDayStart.getTime() + 86400000);
 
-  const [referrals, transactions, depAgg, recentDeposits, commissionAllAgg, commissionTodayAgg] =
-    await Promise.all([
-      db.user.count({
-        where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
-      }),
-      db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
-      db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
-      db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
-      db.transaction.aggregate({
-        where: { userId, type: "commission" },
+  const approvedWithdrawalSum = async (): Promise<number> => {
+    try {
+      const whSum = await db.$queryRaw<Array<{ v: unknown }>>(
+        Prisma.sql`
+        SELECT COALESCE(SUM(COALESCE("grossRequested", amount)), 0) AS v
+        FROM "Withdrawal"
+        WHERE "userId" = ${userId} AND status = 'approved'
+      `,
+      );
+      return Number(whSum[0]?.v ?? 0);
+    } catch {
+      const wdAgg = await db.withdrawal.aggregate({
+        where: { userId, status: "approved" },
         _sum: { amount: true },
+      });
+      return Number(wdAgg._sum.amount ?? 0);
+    }
+  };
+
+  const [
+    referrals,
+    transactions,
+    depAgg,
+    recentDeposits,
+    commissionAllAgg,
+    commissionTodayAgg,
+    recentWithdrawalsRaw,
+    internalWithdrawToUsdt,
+    chainWithdrawalTotal,
+    internalTransferTotal,
+  ] = await Promise.all([
+    db.user.count({
+      where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
+    }),
+    db.transaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
+    db.deposit.aggregate({ where: { userId, status: "confirmed" }, _sum: { amount: true } }),
+    db.deposit.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 20 }),
+    db.transaction.aggregate({
+      where: { userId, type: "commission" },
+      _sum: { amount: true },
+    }),
+    db.transaction.aggregate({
+      where: {
+        userId,
+        type: "commission",
+        createdAt: { gte: utcDayStart, lt: utcDayEnd },
+      },
+      _sum: { amount: true },
+    }),
+    withWithdrawalColumnRetry(db, () =>
+      db.withdrawal.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 80,
       }),
-      db.transaction.aggregate({
-        where: {
-          userId,
-          type: "commission",
-          createdAt: { gte: utcDayStart, lt: utcDayEnd },
-        },
-        _sum: { amount: true },
-      }),
-    ]);
+    ).catch((err) => {
+      console.error("user-dashboard-data: withdrawal list failed", err);
+      return [] as Awaited<ReturnType<typeof db.withdrawal.findMany>>;
+    }),
+    findWithdrawToUsdtTransactions(db, userId, 80).catch((err) => {
+      console.error("user-dashboard-data: internal withdraw history failed", err);
+      return [];
+    }),
+    approvedWithdrawalSum(),
+    sumWithdrawToUsdtInternal(db, userId).catch(() => 0),
+  ]);
 
   const commissionTotal = Number(commissionAllAgg._sum.amount ?? 0);
   const commissionToday = Number(commissionTodayAgg._sum.amount ?? 0);
-
-  let recentWithdrawalsRaw: Awaited<ReturnType<typeof db.withdrawal.findMany>> = [];
-  let internalWithdrawToUsdt: Awaited<ReturnType<typeof findWithdrawToUsdtTransactions>> = [];
-  try {
-    const [wRows, intRows] = await Promise.all([
-      withWithdrawalColumnRetry(db, () =>
-        db.withdrawal.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-          take: 80,
-        }),
-      ),
-      findWithdrawToUsdtTransactions(db, userId, 80),
-    ]);
-    recentWithdrawalsRaw = wRows;
-    internalWithdrawToUsdt = intRows;
-  } catch (err) {
-    console.error("user-dashboard-data: withdrawal / internal history failed", err);
-    recentWithdrawalsRaw = [];
-    internalWithdrawToUsdt = [];
-  }
 
   let currentLevel = 0;
   if (referrals >= 2) {
@@ -229,28 +203,7 @@ export async function getUserDashboardPayload(
 
   const depositTotal = Number(depAgg._sum.amount ?? 0);
   /** Gross requested for approved on-chain withdrawals + withdraw wallet → USDT internal transfers. */
-  let withdrawalTotal = 0;
-  try {
-    const whSum = await db.$queryRaw<Array<{ v: unknown }>>(
-      Prisma.sql`
-        SELECT COALESCE(SUM(COALESCE("grossRequested", amount)), 0) AS v
-        FROM "Withdrawal"
-        WHERE "userId" = ${userId} AND status = 'approved'
-      `,
-    );
-    withdrawalTotal = Number(whSum[0]?.v ?? 0);
-  } catch {
-    const wdAgg = await db.withdrawal.aggregate({
-      where: { userId, status: "approved" },
-      _sum: { amount: true },
-    });
-    withdrawalTotal = Number(wdAgg._sum.amount ?? 0);
-  }
-  try {
-    withdrawalTotal += await sumWithdrawToUsdtInternal(db, userId);
-  } catch {
-    /* ignore */
-  }
+  const withdrawalTotal = Number((chainWithdrawalTotal + internalTransferTotal).toFixed(2));
 
   const data: UserDashboardPayload = {
     profile: maskedProfile as UserDashboardPayload["profile"],

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
 import {
   DepositVerificationError,
   finalizeVerifiedDeposit,
@@ -24,16 +23,7 @@ export async function POST(req: Request) {
 
     const verified = await verifyUsdtDepositTransaction(transactionHash);
 
-    const db = getDb();
-    const user = await db.user.findUnique({
-      where: { id: ctx.userId },
-      select: { id: true, walletAddress: true },
-    });
-    const walletAddress = String(user?.walletAddress ?? "").trim().toLowerCase();
-    if (!walletAddress || walletAddress !== verified.senderAddress) {
-      return NextResponse.json({ error: INVALID_DEPOSIT_TX_MESSAGE }, { status: 400 });
-    }
-
+    /** Credits the logged-in user if TX is valid USDT → platform receiver. Sender can be any wallet or exchange. */
     const result = await finalizeVerifiedDeposit({
       userId: ctx.userId,
       txHash: verified.txHash,

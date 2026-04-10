@@ -23,7 +23,7 @@ async function verifyOnBscScan(txHash: string) {
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAdminSection("payouts");
+    const gate = await requireAdminSection("deposits");
     if (!gate.ok) return gate.response;
 
     const body = await req.json();

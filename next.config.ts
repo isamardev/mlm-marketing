@@ -35,8 +35,25 @@ function distDirWindowsTempDevOnly(): string | undefined {
 
 const distDir = distDirWindowsTempDevOnly();
 
+/**
+ * Dev-only: Next 16 blocks cross-origin requests to `/_next/*` by default (security).
+ * Include hostname-only + full origin — some Next versions match one or the other.
+ * LAN testing: set `ALLOWED_DEV_ORIGINS=http://192.168.1.10:3000` in `.env.local`.
+ */
+const allowedDevOrigins = [
+  "localhost",
+  "127.0.0.1",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://[::1]:3000",
+  ...(process.env.ALLOWED_DEV_ORIGINS?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) ?? []),
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins,
   /** Avoid bundling Prisma into server chunks incorrectly on Vercel. */
   serverExternalPackages: ["@prisma/client"],
   ...(distDir ? { distDir } : {}),
@@ -46,6 +63,10 @@ const nextConfig: NextConfig = {
     pollIntervalMs: 1000,
   },
   experimental: {
+    /**
+     * The ⨯ in the dev console only means these flags are off — not errors.
+     * They are Windows/local workarounds; Vercel production does not use `next dev` or these dev toggles.
+     */
     /** Windows: `<distDir>/lock` acquisition can fail with ENOENT; skip when a single dev instance is used. */
     lockDistDir: false,
     /**

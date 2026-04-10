@@ -19,6 +19,17 @@ const toUSD = (n: number) =>
     Number.isFinite(n) ? n : 0,
   );
 
+/** Match server `normalizeTransactionHashInput` — safe for client-only (no DB imports). */
+function normalizeDepositTxHashInput(raw: string): string {
+  const t = String(raw)
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+    .trim();
+  const noSpace = t.replace(/\s+/g, "");
+  if (/^0x[a-fA-F0-9]{64}$/.test(noSpace)) return noSpace.toLowerCase();
+  if (/^[a-fA-F0-9]{64}$/.test(noSpace)) return `0x${noSpace.toLowerCase()}`;
+  return noSpace;
+}
+
 function WalletSection({
   balance,
   userId,
@@ -31,7 +42,6 @@ function WalletSection({
   onHistoryRedirect?: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [uiMsg, setUiMsg] = useState<string>("");
   const [depositTxId, setDepositTxId] = useState("");
   const [verifyingTx, setVerifyingTx] = useState(false);
   const [verifiedAmount, setVerifiedAmount] = useState<number | null>(null);
@@ -62,22 +72,20 @@ function WalletSection({
               <button
                 type="button"
                 onClick={() => {
-                  setUiMsg("");
                   setStep(2);
                 }}
                 className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-green-600 px-5 text-sm font-medium text-white shadow-sm ring-1 ring-green-600/20 transition hover:bg-green-700"
               >
                 Continue
               </button>
-              {uiMsg ? (
-                <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{uiMsg}</div>
-              ) : null}
             </div>
           </div>
         ) : (
           <div className="w-full">
             <div className="text-lg font-semibold">Payment Details</div>
-            <div className="mt-1 text-xs text-subtext">Send USDT to the receiver address, then paste the BscScan TX ID below</div>
+            <div className="mt-1 text-xs text-subtext">
+              Send USDT (BEP-20) on BSC to the receiver address below. Verification checks that this TX pays our receiver — you can use Trust Wallet, Binance, or any sender; your display name on our panel does not need to match.
+            </div>
             <div className="mt-4 grid gap-3">
               <img
                 alt="Deposit QR"
@@ -107,22 +115,28 @@ function WalletSection({
                 </div>
               </div>
               <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
-                Deposit is verified securely from the blockchain. The TX ID must belong to a successful USDT transfer to this receiver address from your own saved wallet.
+                We verify on-chain that USDT reached this deposit address. The member submitting the TX ID receives the credit (same TX cannot be used twice for another account).
               </div>
               <label className="grid gap-2">
-                <span className="text-xs font-medium text-subtext">BscScan TX ID</span>
+                <span className="text-xs font-medium text-subtext">Enter TX ID</span>
                 <input
+                  type="text"
+                  name="depositTxHash"
                   value={depositTxId}
-                  onChange={(e) => setDepositTxId(e.target.value.trim())}
+                  onChange={(e) => setDepositTxId(e.target.value)}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
                   className="h-11 w-full rounded-2xl bg-background px-4 text-sm font-mono text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="0x..."
+                  placeholder="Enter TX ID (BSC USDT — paste from BscScan)"
                 />
               </label>
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => {
-                    setUiMsg("");
                     setStep(1);
                   }}
                   className="inline-flex h-11 items-center justify-center rounded-2xl bg-card px-5 text-sm font-medium text-foreground shadow-sm ring-1 ring-ring transition hover:bg-muted"
@@ -133,13 +147,11 @@ function WalletSection({
                   type="button"
                   disabled={verifyingTx}
                   onClick={async () => {
-                    const txId = depositTxId.trim();
+                    const txId = normalizeDepositTxHashInput(depositTxId);
                     if (!/^0x[a-fA-F0-9]{64}$/.test(txId)) {
-                      setUiMsg("Please enter valid TX ID.");
                       toast.error("Please enter valid TX ID.");
                       return;
                     }
-                    setUiMsg("");
                     setVerifyingTx(true);
                     try {
                       const res = await fetch("/api/verify-deposit", {
@@ -150,7 +162,6 @@ function WalletSection({
                       const data = await res.json();
                       if (!res.ok) {
                         const msg = typeof data?.error === "string" ? data.error : "Please enter valid TX ID.";
-                        setUiMsg(msg);
                         toast.error(msg);
                         return;
                       }
@@ -167,7 +178,6 @@ function WalletSection({
                       } catch {}
                       if (onHistoryRedirect) onHistoryRedirect();
                     } catch {
-                      setUiMsg("Please enter valid TX ID.");
                       toast.error("Please enter valid TX ID.");
                     } finally {
                       setVerifyingTx(false);
@@ -178,9 +188,6 @@ function WalletSection({
                   {verifyingTx ? "Verifying..." : "Verify TX ID"}
                 </button>
               </div>
-              {uiMsg ? (
-                <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">{uiMsg}</div>
-              ) : null}
             </div>
           </div>
         )}
@@ -1195,12 +1202,15 @@ export default function UserDashboardPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [active, setActive] = useState<"home" | "network" | "wallet" | "settings" | "income" | "activation">("home");
   const [activating, setActivating] = useState(false);
+  const activationInFlightRef = useRef(false);
 
   const onActivate = async () => {
     if (isActivatedMemberStatus(profile?.status)) {
       toast.info("Account is already active");
       return;
     }
+    if (activationInFlightRef.current) return;
+    activationInFlightRef.current = true;
     setActivating(true);
     try {
       const res = await fetch("/api/user/activate", { method: "POST" });
@@ -1209,8 +1219,11 @@ export default function UserDashboardPage() {
         toast.error(data.error || "Activation failed");
         return;
       }
-      toast.success("Account activated successfully!");
-      // Refresh data
+      if (data.alreadyActivated) {
+        toast.info("Account is already activated.");
+      } else {
+        toast.success("Account activated successfully!");
+      }
       try {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("deposit:updated"));
@@ -1219,6 +1232,7 @@ export default function UserDashboardPage() {
     } catch {
       toast.error("Activation failed");
     } finally {
+      activationInFlightRef.current = false;
       setActivating(false);
     }
   };
@@ -1447,11 +1461,14 @@ export default function UserDashboardPage() {
   const refreshDashboardData = async () => {
     if (status === "loading" || !session?.user?.id) return;
     try {
-      // 1. Core Dashboard Data (Balances, Transactions, Status)
-      const res = await fetch("/api/user/dashboard", { cache: "no-store" });
-      const dash = await res.json();
-      if (!res.ok) {
-        if (res.status === 403) {
+      const [dashRes, statsRes, notiRes] = await Promise.all([
+        fetch("/api/user/dashboard", { cache: "no-store" }),
+        fetch("/api/user/referral-stats", { cache: "no-store" }),
+        fetch("/api/user/notifications", { cache: "no-store" }),
+      ]);
+      const dash = await dashRes.json();
+      if (!dashRes.ok) {
+        if (dashRes.status === 403) {
           await signOut({ callbackUrl: "/" });
           return;
         }
@@ -1474,17 +1491,11 @@ export default function UserDashboardPage() {
         });
       }
 
-      // 2. Stats & Notifications (Quick fetches)
-      const [statsRes, notiRes] = await Promise.all([
-        fetch("/api/user/referral-stats", { cache: "no-store" }),
-        fetch("/api/user/notifications", { cache: "no-store" }),
-      ]);
-      
       if (statsRes.ok) {
         const stats = await statsRes.json();
         if (stats?.levels) setRefStats(stats);
       }
-      
+
       if (notiRes.ok) {
         const noti = await notiRes.json();
         if (Array.isArray(noti?.items)) {
@@ -1689,7 +1700,31 @@ export default function UserDashboardPage() {
               <img src="/logo.svg" alt="Logo" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
             </div>
           </div>
-          <div className="relative shrink-0" ref={userMenuRef}>
+          <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+            <div className="min-w-0 flex flex-col items-end gap-0.5 text-right">
+              <div className="flex min-w-0 max-w-[min(72vw,20rem)] items-center justify-end gap-2 sm:max-w-[22rem]">
+                <span className="min-w-0 truncate text-xs font-semibold text-foreground sm:text-sm">
+                  {profile?.username ?? "User"}
+                </span>
+                <span className="shrink-0">
+                  {referralGate?.state === "unverified" ? (
+                    <span className="inline-flex flex-col rounded-md bg-red-600 px-1.5 py-0.5 text-[8px] font-semibold leading-tight text-white ring-1 ring-red-600/20 sm:px-2 sm:text-[9px]">
+                      <span>UNVERIFIED</span>
+                      <span className="font-mono tabular-nums">{gateTime}</span>
+                    </span>
+                  ) : referralGate?.state === "verified" ? (
+                    <span className="inline-block rounded-full bg-green-600 px-1.5 py-0.5 text-[9px] font-semibold text-white ring-1 ring-green-600/20 sm:px-2 sm:text-[10px]">
+                      VERIFIED
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div className="max-w-[min(72vw,20rem)] truncate font-mono text-[9px] text-subtext sm:max-w-[22rem] sm:text-[10px]">
+                <span className="font-sans text-[8px] font-medium uppercase tracking-wide text-subtext sm:text-[9px]">Ref </span>
+                {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "—"}
+              </div>
+            </div>
+            <div className="relative shrink-0" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -1706,27 +1741,6 @@ export default function UserDashboardPage() {
                 className="absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),16rem)] min-w-[14rem] rounded-2xl bg-card p-2 shadow-xl ring-1 ring-ring animate-in fade-in slide-in-from-top-2 duration-200"
                 role="menu"
               >
-                <div className="rounded-xl bg-muted/60 px-3 py-2.5 ring-1 ring-ring/50">
-                  <div className="truncate text-sm font-semibold text-foreground">{profile?.username ?? "User"}</div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {referralGate?.state === "unverified" ? (
-                      <span className="inline-flex flex-col rounded-md bg-red-600 px-2 py-0.5 text-[9px] font-semibold leading-tight text-white ring-1 ring-red-600/20">
-                        <span>UNVERIFIED</span>
-                        <span className="font-mono tabular-nums">{gateTime}</span>
-                      </span>
-                    ) : referralGate?.state === "verified" ? (
-                      <span className="inline-block rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-semibold text-white ring-1 ring-green-600/20">
-                        VERIFIED
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2 break-all font-mono text-[11px] text-subtext">
-                    <span className="font-sans text-[10px] font-medium uppercase tracking-wide text-subtext">Ref code</span>
-                    <div className="mt-0.5 text-foreground">
-                      {referralGate?.state === "unverified" ? "—" : profile?.referrerCode ?? "—"}
-                    </div>
-                  </div>
-                </div>
                 <button
                   type="button"
                   role="menuitem"
@@ -1734,7 +1748,7 @@ export default function UserDashboardPage() {
                     setActive("settings");
                     setUserMenuOpen(false);
                   }}
-                  className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-foreground transition hover:bg-muted"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-foreground transition hover:bg-muted"
                 >
                   <FaUserCircle className="text-primary" size={18} />
                   My Profile
@@ -1751,6 +1765,7 @@ export default function UserDashboardPage() {
                 </button>
               </div>
             )}
+            </div>
           </div>
         </div>
 
@@ -2065,7 +2080,7 @@ export default function UserDashboardPage() {
                         <span className="inline-flex rounded-full bg-green-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-600 ring-1 ring-green-500/25 dark:text-green-400">
                           Active
                         </span>
-                        <span className="text-[10px] sm:text-xs text-subtext">One-time · 20 levels</span>
+                        <span className="text-[10px] sm:text-xs text-subtext">One-time activation · MLM on deposit</span>
                       </div>
                     </div>
                   ) : null}
@@ -2608,12 +2623,16 @@ export default function UserDashboardPage() {
             {active === "income" && (
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Income History</div>
-                <div className="mt-1 text-xs text-subtext">Detailed breakdown of referral earnings</div>
+                <div className="mt-1 text-xs text-subtext">
+                  Referral earnings — same level can appear twice when a member both <span className="text-foreground/90">deposits</span> and{" "}
+                  <span className="text-foreground/90">activates</span> (see type under each row).
+                </div>
                 <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="min-w-[600px]">
-                    <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
+                    <div className="grid grid-cols-[1.6fr_0.65fr_1.1fr_0.85fr_0.95fr] gap-2 bg-muted px-4 py-3 text-xs font-medium text-subtext">
                       <div>From User</div>
                       <div>Level</div>
+                      <div>Type</div>
                       <div>Amount</div>
                       <div>Date</div>
                     </div>
@@ -2623,7 +2642,10 @@ export default function UserDashboardPage() {
                       ) : (
                         <>
                           {commissions.map((c: any) => (
-                            <div key={c.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition">
+                            <div
+                              key={c.id}
+                              className="grid grid-cols-[1.6fr_0.65fr_1.1fr_0.85fr_0.95fr] gap-2 px-4 py-4 text-sm hover:bg-muted/30 transition"
+                            >
                               <div className="min-w-0">
                                 <div className="font-medium text-foreground truncate">{c.fromUser}</div>
                                 <div className="text-[10px] text-subtext truncate">{c.fromEmail}</div>
@@ -2632,6 +2654,9 @@ export default function UserDashboardPage() {
                                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/20">
                                   L{c.level}
                                 </span>
+                              </div>
+                              <div className="flex items-center text-[11px] text-subtext leading-snug">
+                                {typeof c.kindLabel === "string" ? c.kindLabel : "—"}
                               </div>
                               <div className="font-bold text-foreground flex items-center">{toUSD(Number(c.amount))}</div>
                               <div className="text-subtext flex items-center">{new Date(c.date).toLocaleDateString()}</div>

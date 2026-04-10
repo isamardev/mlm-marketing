@@ -4,7 +4,6 @@ export const ADMIN_SECTION_KEYS = [
   "overview",
   "users",
   "deposits",
-  "payouts",
   "settings",
   "withdrawals",
   "payments",

@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { getDb } from "@/lib/db";
 import { runFixedPayoutEngine } from "@/lib/mlm-logic";
 
+function isActivatedMemberStatus(s) {
+  return s === "active" || s === "admin" || s === "withdraw_suspend";
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -27,10 +31,13 @@ export async function POST(req) {
     const db = getDb();
 
     if (status === "paid") {
+      const u = await db.user.findUnique({ where: { id: userId }, select: { status: true } });
+      const distributeMlm = isActivatedMemberStatus(u?.status);
       const payout = await runFixedPayoutEngine({
         sourceUserId: userId,
         depositAmount: amount,
         note: `Webhook ${orderId}`,
+        distributeMlm,
       });
       return NextResponse.json({ ok: true, payout });
     }

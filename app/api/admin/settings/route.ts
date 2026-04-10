@@ -19,17 +19,19 @@ const patchSchema = z.object({
 
 async function ensureSettingsColumns(db: ReturnType<typeof getDb>) {
   try {
-    await db.$executeRawUnsafe(`ALTER TABLE Setting ADD COLUMN whatsapp TEXT DEFAULT ''`);
-  } catch {}
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT DEFAULT ''`,
+    );
+  } catch {
+    /* older PG without IF NOT EXISTS — ignore */
+  }
   try {
-    await db.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "whatsapp" TEXT DEFAULT ''`);
-  } catch {}
-  try {
-    await db.$executeRawUnsafe(`ALTER TABLE Setting ADD COLUMN receiverWalletAddress TEXT`);
-  } catch {}
-  try {
-    await db.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "receiverWalletAddress" TEXT`);
-  } catch {}
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "receiverWalletAddress" TEXT`,
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 async function ensureSettingsRow(db: ReturnType<typeof getDb>) {

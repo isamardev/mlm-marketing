@@ -26,8 +26,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    /** Idempotent: never charge twice — ledger row is the source of truth. */
+    const existingActivationRow = await db.transaction.findFirst({
+      where: {
+        userId,
+        sourceUserId: userId,
+        type: "activation",
+      },
+      select: { id: true },
+    });
+    if (existingActivationRow) {
+      if (!isActivatedMemberStatus(user.status)) {
+        await db.user.update({ where: { id: userId }, data: { status: "active" } });
+      }
+      return NextResponse.json({
+        success: true,
+        alreadyActivated: true,
+        reactivationOnly: true,
+        sourceUserId: userId,
+        activationAmount: 10,
+        payouts: [],
+      });
+    }
+
     if (isActivatedMemberStatus(user.status)) {
-      return NextResponse.json({ error: "Account is already active" }, { status: 400 });
+      return NextResponse.json({
+        success: true,
+        alreadyActivated: true,
+        reactivationOnly: true,
+        sourceUserId: userId,
+        activationAmount: 10,
+        payouts: [],
+      });
     }
 
     // Check 24h window for referred users
@@ -51,12 +81,19 @@ export async function POST(req: Request) {
       note: "Account activation fee",
     });
 
-    await db.user.update({
-      where: { id: userId },
-      data: { lastDownlineActivityAt: new Date() },
-    });
+    if (result.reactivationOnly) {
+      return NextResponse.json({ success: true, alreadyActivated: true, ...result });
+    }
 
-    await onNewMemberRegistered(db, userId);
+    try {
+      await db.user.update({
+        where: { id: userId },
+        data: { lastDownlineActivityAt: new Date() },
+      });
+      await onNewMemberRegistered(db, userId);
+    } catch (hookErr) {
+      console.error("activate: post-activation hooks failed (activation already committed)", hookErr);
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

@@ -11,63 +11,46 @@ export async function GET() {
     if (!gate.ok) return gate.response;
 
     const db = getDb();
-    const [users, p2pTransactions] = await Promise.all([
-      db.user.findMany({
-        // Staff: Roles tab only. Admin accounts: never list in Users tab.
-        where: { adminRoleId: null, status: { not: "admin" } },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          phone: true,
-          country: true,
-          balance: true,
-          status: true,
-          createdAt: true,
-          referredById: true,
-          securityCode: true,
-          staffPasswordPlain: true,
-          adminRoleId: true,
-          adminRole: { select: { id: true, name: true } },
-          _count: { select: { referrals: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      db.transaction.findMany({
-        where: { type: "commission" },
-        select: { userId: true, amount: true },
-      }),
-    ]);
+    const users = await db.user.findMany({
+      // Staff: Roles tab only. Admin accounts: never list in Users tab.
+      where: { adminRoleId: null, status: { not: "admin" } },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        phone: true,
+        country: true,
+        balance: true,
+        status: true,
+        createdAt: true,
+        referredById: true,
+        securityCode: true,
+        staffPasswordPlain: true,
+        adminRoleId: true,
+        adminRole: { select: { id: true, name: true } },
+        _count: { select: { referrals: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-    // Try to get withdrawBalance for all these users via raw SQL safely
     const withdrawMap = new Map<string, number>();
-    try {
-      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "withdrawBalance" FROM "User"`);
-      for (const r of rows) {
-        withdrawMap.set(r.id, Number(r.withdrawBalance ?? r.withdrawbalance ?? 0));
-      }
-    } catch (err) {
-      console.error("Failed to fetch withdrawBalance via raw SQL in users API");
-    }
-    // Try to get usdtBalance and permanentWithdrawAddress for all these users via raw SQL safely
     const usdtMap = new Map<string, number>();
     const withdrawAddressMap = new Map<string, string>();
-    try {
-      const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance", "permanentWithdrawAddress" FROM "User"`);
-      for (const r of rows) {
-        usdtMap.set(r.id, Number(r.usdtBalance ?? r.usdtbalance ?? 0));
-        withdrawAddressMap.set(r.id, r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? "");
+    const ids = users.map((u) => u.id);
+    if (ids.length > 0) {
+      try {
+        const rows = await db.$queryRaw<Array<Record<string, unknown>>>(
+          Prisma.sql`SELECT id, "withdrawBalance", "usdtBalance", "permanentWithdrawAddress" FROM "User" WHERE id IN (${Prisma.join(ids)})`,
+        );
+        for (const r of rows) {
+          const id = String(r.id);
+          withdrawMap.set(id, Number(r.withdrawBalance ?? r.withdrawbalance ?? 0));
+          usdtMap.set(id, Number(r.usdtBalance ?? r.usdtbalance ?? 0));
+          withdrawAddressMap.set(id, String(r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? ""));
+        }
+      } catch (err) {
+        console.error("Failed to fetch wallet columns for users list:", err);
       }
-    } catch {
-      // Fallback if the combined query fails
-      try {
-        const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "usdtBalance" FROM "User"`);
-        for (const r of rows) usdtMap.set(r.id, Number(r.usdtBalance ?? r.usdtbalance ?? 0));
-      } catch {}
-      try {
-        const rows = await db.$queryRawUnsafe<any[]>(`SELECT id, "permanentWithdrawAddress" FROM "User"`);
-        for (const r of rows) withdrawAddressMap.set(r.id, r.permanentWithdrawAddress ?? r.permanentwithdrawaddress ?? "");
-      } catch {}
     }
 
     const downlineRows = await db.$queryRaw<Array<{ rootId: string; downlineCount: bigint | number }>>(Prisma.sql`
