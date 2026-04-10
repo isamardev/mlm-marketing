@@ -1,4 +1,7 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import WebSocket from "ws";
 import { resolveDatabaseUrlForPrisma } from "@/lib/database-url";
 
 declare global {
@@ -18,6 +21,11 @@ function warnIfVercelUsesLocalDatabaseUrl(url: string) {
   }
 }
 
+/**
+ * On Vercel, raw TCP to Neon `:5432` often fails (`Can't reach database server`).
+ * Neon + Prisma: use serverless driver (WebSockets) via `@prisma/adapter-neon`.
+ * Set `PRISMA_NEON_ADAPTER=0` to force classic TCP Prisma (e.g. debugging).
+ */
 function createPrismaClient(): PrismaClient {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -25,18 +33,30 @@ function createPrismaClient(): PrismaClient {
   }
   warnIfVercelUsesLocalDatabaseUrl(url);
 
-  const datasourceUrl = resolveDatabaseUrlForPrisma(url);
+  const resolved = resolveDatabaseUrlForPrisma(url);
+
+  const useNeonWs =
+    process.env.PRISMA_NEON_ADAPTER !== "0" &&
+    process.env.VERCEL === "1" &&
+    /neon\.tech/i.test(resolved);
+
+  const log: ("error" | "warn")[] =
+    process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"];
+
+  if (useNeonWs) {
+    neonConfig.webSocketConstructor = WebSocket;
+    const pool = new Pool({ connectionString: resolved });
+    const adapter = new PrismaNeon(pool);
+    return new PrismaClient({ adapter, log });
+  }
 
   return new PrismaClient({
     datasources: {
       db: {
-        url: datasourceUrl,
+        url: resolved,
       },
     },
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["error", "warn"]
-        : ["error"],
+    log,
   });
 }
 
@@ -49,8 +69,6 @@ export function getDb() {
   if (!global.prismaClient) {
     global.prismaClient = createPrismaClient();
   } else if (!clientHasAdminRole(global.prismaClient)) {
-    // Dev / deploy: singleton was created before `AdminRole` existed in schema; `prisma generate` updated
-    // node_modules but this process still holds the old PrismaClient instance (no `adminRole` delegate).
     void global.prismaClient.$disconnect().catch(() => undefined);
     global.prismaClient = createPrismaClient();
   }

@@ -54,8 +54,13 @@ const allowedDevOrigins = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
-  /** Avoid bundling Prisma into server chunks incorrectly on Vercel. */
-  serverExternalPackages: ["@prisma/client"],
+  /** Prisma + Neon serverless adapter (ws) — keep external for correct runtime resolution on Vercel. */
+  serverExternalPackages: [
+    "@prisma/client",
+    "@prisma/adapter-neon",
+    "@neondatabase/serverless",
+    "ws",
+  ],
   ...(distDir ? { distDir } : {}),
   outputFileTracingRoot: projectRoot,
   /** Polling helps file watchers on Windows (slow/locked drives, Defender). */

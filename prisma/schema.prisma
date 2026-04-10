@@ -1,8 +1,9 @@
 // Generate into `generated/` (avoids Windows EPERM), then `scripts/copy-prisma-client.cjs` copies into
 // `node_modules/.prisma/client` for Vercel. Default **library** engine (not wasm) — wasm caused DB reachability issues on Vercel.
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/prisma-client"
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma-client"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
