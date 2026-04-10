@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { signOut, useSession } from "next-auth/react";
 import AdminLoginForm from "./AdminLoginForm";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 const AdminPanelClient = dynamic(
   () => import("./AdminPanelClient").then((m) => ({ default: m.AdminPanelClient })),
@@ -41,7 +42,7 @@ export default function AdminPage() {
           </p>
                       <button
                         type="button"
-                        onClick={() => signOut({ callbackUrl: "/" })}
+                        onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
             className="mt-6 w-full rounded-full bg-primary py-3 text-sm font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
                       >
                         Logout

@@ -11,6 +11,7 @@ import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
 import { isActivatedMemberStatus } from "@/lib/user-status";
 import { copyTextToClipboard } from "@/lib/copy-text";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -52,7 +53,7 @@ function WalletSection({
         {step === 1 ? (
           <div className="w-full">
             <div className="text-lg font-semibold">Deposit Funds</div>
-            <div className="mt-1 text-xs text-subtext">Send real USDT on BEP20, then submit your TX ID for verification</div>
+            <div className="mt-1 text-xs text-subtext">Send USDT on BEP20, then submit your TX ID for verification</div>
             <div className="mt-4 grid gap-3 max-w-full lg:max-w-md">
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">Select Network</span>
@@ -74,7 +75,7 @@ function WalletSection({
                 onClick={() => {
                   setStep(2);
                 }}
-                className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-green-600 px-5 text-sm font-medium text-white shadow-sm ring-1 ring-green-600/20 transition hover:bg-green-700"
+                className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
               >
                 Continue
               </button>
@@ -83,8 +84,12 @@ function WalletSection({
         ) : (
           <div className="w-full">
             <div className="text-lg font-semibold">Payment Details</div>
-            <div className="mt-1 text-xs text-subtext">
-              Send USDT (BEP-20) on BSC to the receiver address below. Verification checks that this TX pays our receiver — you can use Trust Wallet, Binance, or any sender; your display name on our panel does not need to match.
+            <div className="mt-1 text-xs text-subtext leading-relaxed">
+              Minimum <span className="font-semibold text-foreground">$10 USDT</span>. Complete your transfer within{" "}
+              <span className="font-semibold text-foreground">24 hours</span> from any exchange or wallet to the BEP20 (BSC)
+              address below. A valid <span className="font-semibold text-foreground">transaction ID (TX ID)</span> must be
+              submitted — without it we cannot verify your payment and{" "}
+              <span className="font-semibold text-foreground">we are not responsible</span> for missing or incorrect TX IDs.
             </div>
             <div className="mt-4 grid gap-3">
               <img
@@ -115,7 +120,8 @@ function WalletSection({
                 </div>
               </div>
               <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
-                We verify on-chain that USDT reached this deposit address. The member submitting the TX ID receives the credit (same TX cannot be used twice for another account).
+                TX ID is required — we verify on-chain that USDT reached this deposit address. The member who submits the TX ID
+                receives the credit (the same TX cannot be used twice for another account).
               </div>
               <label className="grid gap-2">
                 <span className="text-xs font-medium text-subtext">Enter TX ID</span>
@@ -130,7 +136,7 @@ function WalletSection({
                   spellCheck={false}
                   inputMode="text"
                   className="h-11 w-full rounded-2xl bg-background px-4 text-sm font-mono text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="Enter TX ID (BSC USDT — paste from BscScan)"
+                  placeholder="Enter BEP20 transaction ID (0x…)"
                 />
               </label>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -1469,7 +1475,7 @@ export default function UserDashboardPage() {
       const dash = await dashRes.json();
       if (!dashRes.ok) {
         if (dashRes.status === 403) {
-          await signOut({ callbackUrl: "/" });
+          await signOut({ callbackUrl: getAuthRedirectUrl("/") });
           return;
         }
         return;
@@ -1757,7 +1763,7 @@ export default function UserDashboardPage() {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={() => signOut({ callbackUrl: "/" })}
+                  onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
                   className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10"
                 >
                   <FaSignOutAlt className="text-red-500" size={18} />
@@ -1951,7 +1957,7 @@ export default function UserDashboardPage() {
             </div>
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
               className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-muted px-5 text-sm font-medium text-foreground ring-1 ring-ring transition hover:bg-secondary"
             >
               Logout
@@ -2028,7 +2034,7 @@ export default function UserDashboardPage() {
                       <div className="text-sm text-subtext">Welcome back</div>
                       <div className="mt-1 text-2xl font-semibold">{profile?.username ?? "User"}</div>
                       <div className="mt-2 max-w-2xl text-sm text-subtext">
-                        {uiMessage ? uiMessage : "Live data enabled: dashboard, referrals, transactions, notifications."}
+                        {uiMessage ? uiMessage : "Your balances, team stats, and activity will show here."}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2080,7 +2086,7 @@ export default function UserDashboardPage() {
                         <span className="inline-flex rounded-full bg-green-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-600 ring-1 ring-green-500/25 dark:text-green-400">
                           Active
                         </span>
-                        <span className="text-[10px] sm:text-xs text-subtext">One-time activation · MLM on deposit</span>
+                        <span className="text-[10px] sm:text-xs text-subtext">One-time activation</span>
                       </div>
                     </div>
                   ) : null}
@@ -2624,8 +2630,7 @@ export default function UserDashboardPage() {
               <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] overflow-hidden">
                 <div className="text-sm font-semibold">Income History</div>
                 <div className="mt-1 text-xs text-subtext">
-                  Referral earnings — same level can appear twice when a member both <span className="text-foreground/90">deposits</span> and{" "}
-                  <span className="text-foreground/90">activates</span> (see type under each row).
+                  Your commissions will show here as you earn from your network. Each row shows type, level, and amount.
                 </div>
                 <div className="mt-4 w-full overflow-x-auto rounded-2xl ring-1 ring-ring custom-scrollbar">
                   <div className="min-w-[600px]">
@@ -3039,7 +3044,7 @@ export default function UserDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: "/" })}
+                onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
                 className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-red-600/10 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-red-600/20 transition hover:bg-red-600/20"
               >
                 Logout

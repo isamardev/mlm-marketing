@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, type FormEvent } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { markSessionTabActive } from "@/lib/session-tab";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 import { useRouter } from "next/navigation";
 import { FaEye, FaEyeSlash, FaSignOutAlt } from "react-icons/fa";
 import { AdminPanelClient } from "../admin/AdminPanelClient";
@@ -83,7 +84,7 @@ export default function RoleLoginPage() {
             </p>
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
               className="mt-6 w-full rounded-full bg-primary py-3 text-sm font-medium text-white ring-1 ring-primary/20 transition hover:bg-primary/90"
             >
               Logout
@@ -127,7 +128,7 @@ export default function RoleLoginPage() {
                   role="menuitem"
                   onClick={() => {
                     setRoleMenuOpen(false);
-                    signOut({ callbackUrl: "/" });
+                    signOut({ callbackUrl: getAuthRedirectUrl("/") });
                   }}
                   className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10"
                 >

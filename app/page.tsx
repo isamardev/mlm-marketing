@@ -6,6 +6,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
 import { markSessionTabActive } from "@/lib/session-tab";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
 const COUNTRIES = [
@@ -410,7 +411,7 @@ function HomeContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => signOut({ callbackUrl: "/" })}
+                    onClick={() => signOut({ callbackUrl: getAuthRedirectUrl("/") })}
                     className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted"
                   >
                     Logout

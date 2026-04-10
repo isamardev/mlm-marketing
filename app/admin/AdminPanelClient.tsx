@@ -5,6 +5,7 @@ import { FaUser, FaSignOutAlt, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { coalesceBep20ForSave } from "@/lib/receiver-wallet";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 type NavItem = {
   key: string;
@@ -963,7 +964,7 @@ export function AdminPanelClient() {
                   role="menuitem"
                   onClick={() => {
                     setAdminMenuOpen(false);
-                    signOut({ callbackUrl: "/" });
+                    signOut({ callbackUrl: getAuthRedirectUrl("/") });
                   }}
                   className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10"
                 >

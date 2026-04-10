@@ -12,6 +12,7 @@ import {
   markSessionTabActive,
   clearSessionTabMarker,
 } from "@/lib/session-tab";
+import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
 
@@ -41,7 +42,7 @@ function SessionTabEnforcer() {
       }
       markSessionTabActive();
     } catch {
-      void signOut({ callbackUrl: "/" });
+      void signOut({ callbackUrl: getAuthRedirectUrl("/") });
     }
   }, [status, session]);
 
@@ -65,7 +66,7 @@ function SessionGuard() {
     if (handledRef.current) return;
     handledRef.current = true;
     toast.error(BLOCKED_MESSAGE);
-    signOut({ callbackUrl: "/?blocked=1" });
+    signOut({ callbackUrl: getAuthRedirectUrl("/?blocked=1") });
   }, [pathname, session?.user?.status, status]);
 
   return null;
