@@ -1,38 +1,15 @@
 /**
- * Vercel serverless + Neon: ensure SSL and pooler params Prisma expects.
- * Localhost / local DB unchanged.
+ * Use `DATABASE_URL` exactly as Neon / your host provides it in Vercel env.
+ * Auto-appending `connection_limit`, `connect_timeout`, etc. caused
+ * `Can't reach database server` with Neon pooler + Prisma in production.
  *
- * Neon dashboard: use the **pooled** connection string for DATABASE_URL on Vercel
- * (host contains `pooler` — e.g. `ep-xxx-pooler.region.aws.neon.tech`).
+ * If you need extra params, add them in the Neon dashboard connection string
+ * (or Vercel → Environment Variables) — do not patch here unless you know the driver accepts them.
  */
 export function resolveDatabaseUrlForPrisma(raw?: string | null): string {
   const url = (raw ?? process.env.DATABASE_URL ?? "").trim();
   if (!url) {
     throw new Error("Missing DATABASE_URL");
   }
-  if (process.env.VERCEL !== "1") {
-    return url;
-  }
-
-  let out = url;
-
-  const hasParam = (key: string) => new RegExp(`[?&]${key}=`, "i").test(out);
-  const addParam = (key: string, value: string) => {
-    if (hasParam(key)) return;
-    out += (out.includes("?") ? "&" : "?") + `${key}=${encodeURIComponent(value)}`;
-  };
-
-  if (/postgres(ql)?:\/\//i.test(out) && !hasParam("sslmode")) {
-    addParam("sslmode", "require");
-  }
-
-  if (/neon\.tech/i.test(out)) {
-    if (/pooler/i.test(out)) {
-      addParam("pgbouncer", "true");
-    }
-    addParam("connect_timeout", "15");
-    addParam("connection_limit", "1");
-  }
-
-  return out;
+  return url;
 }
