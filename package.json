@@ -19,7 +19,6 @@
   "dependencies": {
     "@next/env": "16.2.2",
     "@prisma/client": "^5.22.0",
-    "@prisma/engines": "7.6.0",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@reown/appkit": "^1.8.19",
     "@swc/helpers": "^0.5.20",

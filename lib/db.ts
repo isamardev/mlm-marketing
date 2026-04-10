@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { resolveDatabaseUrlForPrisma } from "@/lib/database-url";
 
 declare global {
   var prismaClient: PrismaClient | undefined;
@@ -24,7 +25,14 @@ function createPrismaClient(): PrismaClient {
   }
   warnIfVercelUsesLocalDatabaseUrl(url);
 
+  const datasourceUrl = resolveDatabaseUrlForPrisma(url);
+
   return new PrismaClient({
+    datasources: {
+      db: {
+        url: datasourceUrl,
+      },
+    },
     log:
       process.env.NODE_ENV === "development"
         ? ["error", "warn"]
