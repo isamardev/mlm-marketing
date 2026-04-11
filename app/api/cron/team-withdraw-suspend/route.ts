@@ -2,16 +2,15 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { runTeamWithdrawAutoSuspendSweep } from "@/lib/team-withdraw-activity";
 
-/**
- * Periodic job: suspend withdrawals for active members with stale downline activity
- * (window: lib/team-withdraw-activity.ts). Manual call: GET with Authorization Bearer CRON_SECRET.
- */
+// GET /api/cron/team-withdraw-suspend - sweep users with stale team activity (see lib/team-withdraw-activity.ts).
+// Auth: Authorization: Bearer CRON_SECRET, or Vercel Cron (header x-vercel-cron on Vercel deployments).
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
-  const authOk = Boolean(secret) && req.headers.get("authorization") === `Bearer ${secret}`;
-  // Vercel Cron: header x-vercel-cron is set on scheduled invocations.
-  const vercelCronOk = process.env.VERCEL === "1" && req.headers.get("x-vercel-cron") === "1";
-  if (!authOk && !vercelCronOk) {
+  const bearerOk =
+    Boolean(secret) && req.headers.get("authorization") === `Bearer ${secret}`;
+  const vercelCronOk =
+    process.env.VERCEL === "1" && req.headers.get("x-vercel-cron") === "1";
+  if (!bearerOk && !vercelCronOk) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
