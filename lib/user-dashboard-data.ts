@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { getDb } from "@/lib/db";
+import { applyAutoWithdrawSuspendIfStaleForUser } from "@/lib/team-withdraw-activity";
 import { withWithdrawalColumnRetry } from "@/lib/withdrawal-ensure-column";
 import { isActivatedMemberStatus } from "@/lib/user-status";
 import {
@@ -52,6 +53,7 @@ export async function getUserDashboardPayload(
   { success: true; data: UserDashboardPayload } | { success: false; status: number; error: string }
 > {
   const db = getDb();
+  await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
   const now = new Date();
   const nowMs = now.getTime();
 
