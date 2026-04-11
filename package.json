@@ -12,7 +12,7 @@
     "db:reset": "prisma migrate reset --force --skip-seed",
     "build": "node scripts/run-build.cjs",
     "build:next": "node ./node_modules/next/dist/bin/next build --webpack",
-    "postinstall": "node scripts/prisma-setup.cjs",
+    "postinstall": "node scripts/prisma-setup.cjs && node scripts/copy-brand-logo.cjs",
     "start": "node ./scripts/start-production.cjs",
     "start:only": "next start",
     "lint": "next lint"

@@ -87,7 +87,8 @@ export async function applyAutoWithdrawSuspendIfStaleForUser(
     select: { status: true, adminRoleId: true, lastDownlineActivityAt: true },
   });
   if (!u || u.status !== "active" || u.adminRoleId != null) return;
-  if (u.lastDownlineActivityAt >= cutoff) return;
+  const last = u.lastDownlineActivityAt;
+  if (last != null && last.getTime() >= cutoff.getTime()) return;
   await db.user.update({
     where: { id: userId },
     data: {
@@ -129,7 +130,7 @@ export async function runTeamWithdrawAutoSuspendSweep(db: ReturnType<typeof getD
     where: {
       status: "active",
       adminRoleId: null,
-      lastDownlineActivityAt: { lt: cutoff },
+      OR: [{ lastDownlineActivityAt: null }, { lastDownlineActivityAt: { lt: cutoff } }],
     },
     data: {
       status: "withdraw_suspend",

@@ -422,7 +422,7 @@ function HomeContent() {
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <div className="flex items-center gap-3">
                 <img
-                  src="/logo.svg"
+                  src="/logo.jpeg"
                   alt="Digital Community Magnet"
                   className="h-9 w-auto max-w-[min(100%,280px)] rounded-md ring-1 ring-ring object-left object-contain sm:h-10"
                 />

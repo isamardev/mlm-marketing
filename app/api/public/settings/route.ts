@@ -8,7 +8,7 @@ export async function GET() {
     const { whatsapp } = await readWhatsAppAndReceiverFromDb(db);
 
     return NextResponse.json({
-      whatsappNumber: whatsapp || "923000000000",
+      whatsappNumber: (whatsapp ?? "").trim(),
       receiverWalletAddress: getResolvedReceiverWalletAddress(),
     });
   } catch {

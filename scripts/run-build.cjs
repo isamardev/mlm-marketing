@@ -25,6 +25,11 @@ function run(title, execPath, args) {
 }
 
 function main() {
+  const copyLogo = path.join(root, "scripts", "copy-brand-logo.cjs");
+  if (fs.existsSync(copyLogo)) {
+    run("Brand logo → public + app/icon", process.execPath, [copyLogo]);
+  }
+
   if (!fs.existsSync(prismaSetup)) {
     console.error("[build] Missing scripts/prisma-setup.cjs");
     process.exit(1);
