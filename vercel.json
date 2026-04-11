@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/team-withdraw-suspend",
-      "schedule": "*/10 * * * *"
-    }
-  ]
-}

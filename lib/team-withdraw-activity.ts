@@ -76,27 +76,6 @@ export async function onNewMemberRegistered(
   }
 }
 
-// Same inactivity rule as runTeamWithdrawAutoSuspendSweep, for one user (dashboard or withdraw routes).
-export async function applyAutoWithdrawSuspendIfStaleForUser(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-): Promise<void> {
-  const cutoff = inactivityCutoff();
-  const u = await db.user.findUnique({
-    where: { id: userId },
-    select: { status: true, adminRoleId: true, lastDownlineActivityAt: true },
-  });
-  if (!u || u.status !== "active" || u.adminRoleId != null) return;
-  if (u.lastDownlineActivityAt >= cutoff) return;
-  await db.user.update({
-    where: { id: userId },
-    data: {
-      status: "withdraw_suspend",
-      withdrawSuspendSource: AUTO_SUSPEND_SOURCE,
-    },
-  });
-}
-
 /**
  * Marks active members (non-admin) with stale team activity as auto withdraw-suspended.
  */

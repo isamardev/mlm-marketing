@@ -5,7 +5,6 @@ import { getUserApiContext } from "@/lib/user-api-auth";
 import { Prisma } from "@prisma/client";
 import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
 import { splitWithdrawalFeeToCharityAndFeePool } from "@/lib/platform-fee-split";
-import { applyAutoWithdrawSuspendIfStaleForUser } from "@/lib/team-withdraw-activity";
 
 const schema = z.object({
   amount: z.number().positive(),
@@ -34,7 +33,6 @@ export async function POST(req: Request) {
     const userId = ctx.userId;
     const { amount, address, securityCode } = parsed.data;
 
-    await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
     const user = await db.user.findUnique({ where: { id: userId } });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
