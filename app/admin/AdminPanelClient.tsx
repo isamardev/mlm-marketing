@@ -929,7 +929,7 @@ export function AdminPanelClient() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
               <div className="flex min-w-0 items-center gap-3">
-                <img src="/logo.svg" alt="Logo" className="h-8 w-auto rounded-md ring-1 ring-ring" />
+                <img src="/logo.svg" alt="Digital Community Magnet" className="h-8 w-auto rounded-md ring-1 ring-ring" />
               </div>
           </div>
           <div className="relative flex min-w-0 items-center gap-2" ref={adminMenuRef}>

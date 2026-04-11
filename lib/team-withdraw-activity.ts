@@ -98,6 +98,27 @@ export async function applyAutoWithdrawSuspendIfStaleForUser(
 }
 
 /**
+ * Runs stale check for this user and up to {@link TEAM_UPLINE_STEPS} sponsors above (same tree path).
+ * Global downline sweep stays on cron / per-request for self only to avoid heavy queries.
+ */
+export async function applyAutoWithdrawSuspendIfStaleForUserAndUpline(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+): Promise<void> {
+  await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
+  let currentId: string | null = userId;
+  for (let depth = 0; depth < TEAM_UPLINE_STEPS; depth++) {
+    const row = await db.user.findUnique({
+      where: { id: currentId },
+      select: { referredById: true },
+    });
+    if (!row?.referredById) break;
+    await applyAutoWithdrawSuspendIfStaleForUser(db, row.referredById);
+    currentId = row.referredById;
+  }
+}
+
+/**
  * Marks active members (non-admin) with stale team activity as auto withdraw-suspended.
  */
 export async function runTeamWithdrawAutoSuspendSweep(db: ReturnType<typeof getDb>): Promise<{ updated: number }> {

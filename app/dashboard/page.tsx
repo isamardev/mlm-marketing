@@ -323,11 +323,11 @@ function WithdrawSection({
       {withdrawSuspended ? (
         <>
           <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
-            <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
+            <div className="font-semibold text-amber-700 dark:text-amber-400">Your withdrawal suspended</div>
             <p className="mt-2 text-xs text-subtext">
               {withdrawAutoTeamSuspend
-                ? "No downline activation in the last 10 minutes (activity counts up to 10 upline levels when someone activates). Add a team member who completes activation — withdrawals unlock automatically."
-                : "Your withdrawal is suspended. Please contact customer support."}
+                ? "No qualifying team activity within the inactivity window (activity can refresh up to 10 upline levels in your tree when someone activates). Contact customer support for help."
+                : "Contact customer support for help."}
             </p>
             <p className="mt-2 text-xs text-subtext">
               Withdraw wallet balance:{" "}
@@ -1704,7 +1704,7 @@ export default function UserDashboardPage() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
             <div className="flex min-w-0 items-center">
-              <img src="/logo.svg" alt="Logo" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
+              <img src="/logo.svg" alt="Digital Community Magnet" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
             </div>
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
@@ -2520,11 +2520,11 @@ export default function UserDashboardPage() {
                 <div className="mt-1 text-xs text-subtext">Transfer between your internal wallets</div>
                 {profile?.status === "withdraw_suspend" ? (
                   <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
-                    <div className="font-semibold text-amber-700 dark:text-amber-400">Transfer from withdraw wallet locked</div>
+                    <div className="font-semibold text-amber-700 dark:text-amber-400">Your withdrawal suspended</div>
                     <p className="mt-2 text-xs text-subtext">
                       {profile?.withdrawSuspendSource === "auto_team_inactivity"
-                        ? "No downline activation in the last 10 minutes. Add a team member who completes activation — withdrawals unlock automatically."
-                        : "Your withdrawal is suspended. Please contact customer support."}
+                        ? "No qualifying team activity within the inactivity window (tree can refresh up to 10 levels when downline activates). Contact customer support for help."
+                        : "Contact customer support for help."}
                     </p>
                   </div>
                 ) : (

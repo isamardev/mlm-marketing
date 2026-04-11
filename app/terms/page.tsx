@@ -10,7 +10,7 @@ export default function TermsPage() {
     },
     {
       title: "2. Account Registration",
-      content: "To participate in our MLM structure, you must create an account. You are responsible for maintaining the confidentiality of your account information and password. You must provide accurate and complete information during registration."
+      content: "To participate in Digital Community Magnet’s binary community program, you must create an account. You are responsible for maintaining the confidentiality of your account information and password. You must provide accurate and complete information during registration."
     },
     {
       title: "3. Binary Structure & Referrals",
@@ -30,7 +30,7 @@ export default function TermsPage() {
     },
     {
       title: "7. Limitation of Liability",
-      content: "MLM Marketing shall not be liable for any direct, indirect, incidental, or consequential damages resulting from the use or inability to use our services."
+      content: "Digital Community Magnet shall not be liable for any direct, indirect, incidental, or consequential damages resulting from the use or inability to use our services."
     }
   ];
 
@@ -73,10 +73,10 @@ export default function TermsPage() {
 
       <footer className="mx-auto max-w-7xl px-6 py-12">
         <div className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-muted p-6 text-sm text-subtext ring-1 ring-ring sm:flex-row">
-          <div>© {new Date().getFullYear()} MLM Marketing</div>
+          <div>© {new Date().getFullYear()} Digital Community Magnet</div>
           <div className="inline-flex items-center gap-2">
             <span className="h-3 w-3 rounded-full bg-primary shadow-[0_0_10px_rgba(0,178,163,0.35)]" />
-            <span>Teal accent theme</span>
+            <span>Connecting &amp; growing together</span>
           </div>
         </div>
       </footer>

@@ -109,6 +109,9 @@ export async function PATCH(req: Request) {
       } else {
         prismaData.withdrawSuspendSource = null;
       }
+      if (st === "active" && user.status === "withdraw_suspend") {
+        prismaData.lastDownlineActivityAt = new Date();
+      }
     }
     if (securityCode !== undefined) {
       const s = String(securityCode ?? "").trim();
