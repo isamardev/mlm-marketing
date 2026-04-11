@@ -8,13 +8,29 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync, spawnSync } = require("child_process");
+const { loadEnvConfig } = require("@next/env");
 
 const root = process.cwd();
+/** Match `next start` env loading so `.env.local` / `.env.production` apply before we validate. */
+loadEnvConfig(root, false);
 const buildIdPath = path.join(root, ".next", "BUILD_ID");
 const nextPkgDir = path.dirname(require.resolve("next/package.json"));
 const nextBin = path.join(nextPkgDir, "dist", "bin", "next");
 
 function main() {
+  const authSecret = (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "").trim();
+  if (!authSecret) {
+    console.error(
+      [
+        "[start] Missing AUTH_SECRET (or NEXTAUTH_SECRET). Auth.js cannot sign sessions without it.",
+        "  Local: copy env.example to .env.local and set AUTH_SECRET (openssl rand -base64 32).",
+        "  Vercel: Project → Settings → Environment Variables → AUTH_SECRET (Production).",
+        "  Client error: https://errors.authjs.dev#autherror",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
   if (!fs.existsSync(buildIdPath) && process.env.SKIP_START_BUILD !== "1") {
     console.log("[start] No production build (.next/BUILD_ID). Running npm run build …\n");
     execSync("npm run build", {

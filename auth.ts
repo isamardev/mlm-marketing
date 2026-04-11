@@ -27,8 +27,10 @@ const credentialsSchema = z.object({
 
 /**
  * trustHost: required on Vercel / HTTPS proxies so Auth.js accepts the incoming Host header.
- * Set AUTH_SECRET + DATABASE_URL on the host. For AUTH_URL / NEXTAUTH_URL: use only in
- * `.env.local` for localhost; on Vercel either omit them (often inferred) or set `https://…`.
+ * Set AUTH_SECRET + DATABASE_URL on the host. Without AUTH_SECRET, `/api/auth/*` returns a
+ * configuration error and the browser shows ClientFetchError (see errors.authjs.dev#autherror).
+ * For AUTH_URL / NEXTAUTH_URL: use only in `.env.local` for localhost; on Vercel either omit
+ * them (often inferred) or set `https://…`.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
