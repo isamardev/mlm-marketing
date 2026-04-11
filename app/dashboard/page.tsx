@@ -323,11 +323,11 @@ function WithdrawSection({
       {withdrawSuspended ? (
         <>
           <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
-            <div className="font-semibold text-amber-700 dark:text-amber-400">Your withdrawal suspended</div>
+            <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
             <p className="mt-2 text-xs text-subtext">
               {withdrawAutoTeamSuspend
-                ? "No qualifying team activity within the inactivity window (activity can refresh up to 10 upline levels in your tree when someone activates). Contact customer support for help."
-                : "Contact customer support for help."}
+                ? "No downline activation in the last 10 minutes (activity counts up to 10 upline levels when someone activates). Add a team member who completes activation — withdrawals unlock automatically."
+                : "Your withdrawal is suspended. Please contact customer support."}
             </p>
             <p className="mt-2 text-xs text-subtext">
               Withdraw wallet balance:{" "}
@@ -1265,6 +1265,9 @@ export default function UserDashboardPage() {
   const [uplineNodes, setUplineNodes] = useState<any[] | null>(null);
   const [notifications, setNotifications] = useState<any[] | null>(null);
   const [unread, setUnread] = useState<number>(0);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
   const [uiMessage, setUiMessage] = useState("");
   const [origin, setOrigin] = useState("");
   const [receiverWalletAddress, setReceiverWalletAddress] = useState(DEFAULT_RECEIVER_WALLET_ADDRESS);
@@ -1701,7 +1704,7 @@ export default function UserDashboardPage() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
             <div className="flex min-w-0 items-center">
-              <img src="/logo.jpeg" alt="Digital Community Magnet" className="h-6 max-h-10 w-auto max-w-[min(100%,280px)] object-contain object-left rounded-md ring-1 ring-ring sm:h-7" />
+              <img src="/logo.svg" alt="Logo" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
             </div>
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
@@ -2027,11 +2030,22 @@ export default function UserDashboardPage() {
             {active === "home" && (
               <div className="space-y-6">
                 <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8 overflow-hidden">
-                  <div>
-                    <div className="text-sm text-subtext">Welcome back</div>
-                    <div className="mt-1 text-2xl font-semibold">{profile?.username ?? "User"}</div>
-                    <div className="mt-2 max-w-2xl text-sm text-subtext">
-                      {uiMessage ? uiMessage : "Your balances, team stats, and activity will show here."}
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-sm text-subtext">Welcome back</div>
+                      <div className="mt-1 text-2xl font-semibold">{profile?.username ?? "User"}</div>
+                      <div className="mt-2 max-w-2xl text-sm text-subtext">
+                        {uiMessage ? uiMessage : "Your balances, team stats, and activity will show here."}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSupportOpen(true)}
+                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted w-full sm:w-auto"
+                      >
+                        Support
+                      </button>
                     </div>
                   </div>
 
@@ -2506,11 +2520,11 @@ export default function UserDashboardPage() {
                 <div className="mt-1 text-xs text-subtext">Transfer between your internal wallets</div>
                 {profile?.status === "withdraw_suspend" ? (
                   <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
-                    <div className="font-semibold text-amber-700 dark:text-amber-400">Your withdrawal suspended</div>
+                    <div className="font-semibold text-amber-700 dark:text-amber-400">Transfer from withdraw wallet locked</div>
                     <p className="mt-2 text-xs text-subtext">
                       {profile?.withdrawSuspendSource === "auto_team_inactivity"
-                        ? "No qualifying team activity within the inactivity window (tree can refresh up to 10 levels when downline activates). Contact customer support for help."
-                        : "Contact customer support for help."}
+                        ? "No downline activation in the last 10 minutes. Add a team member who completes activation — withdrawals unlock automatically."
+                        : "Your withdrawal is suspended. Please contact customer support."}
                     </p>
                   </div>
                 ) : (
@@ -2776,6 +2790,84 @@ export default function UserDashboardPage() {
           </main>
         </div>
       </div>
+
+      {supportOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8" role="dialog" aria-modal="true" aria-label="Support">
+          <button type="button" onClick={() => setSupportOpen(false)} className="absolute inset-0 bg-black/30" aria-label="Close" />
+          <div className="relative w-full max-w-md rounded-3xl bg-card p-6 shadow-xl ring-1 ring-ring">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-2xl font-semibold">Support</div>
+                <div className="mt-1 text-sm text-subtext">Submit payment or account related issues.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSupportOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground ring-1 ring-ring transition hover:bg-secondary"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              className="mt-6 grid gap-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setUiMessage("");
+                try {
+                  const res = await fetch("/api/user/support", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ subject: supportSubject, message: supportMessage }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    setUiMessage(typeof data?.error === "string" ? data.error : "Support failed");
+                    toast.error("Support failed");
+                    return;
+                  }
+                  setUiMessage("Ticket submitted");
+                  toast.success("Ticket submitted");
+                  setSupportSubject("");
+                  setSupportMessage("");
+                  setSupportOpen(false);
+                } catch {
+                  setUiMessage("Support failed");
+                  toast.error("Support failed");
+                }
+              }}
+            >
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-foreground">Subject</span>
+                <input
+                  required
+                  value={supportSubject}
+                  onChange={(e) => setSupportSubject(e.target.value)}
+                  className="h-11 w-full rounded-2xl bg-background px-4 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Payment pending"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-foreground">Message</span>
+                <textarea
+                  required
+                  value={supportMessage}
+                  onChange={(e) => setSupportMessage(e.target.value)}
+                  className="min-h-[120px] w-full rounded-2xl bg-background px-4 py-3 text-sm text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Details..."
+                />
+              </label>
+              <button
+                type="submit"
+                className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
+              >
+                Submit
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {mobileNavOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">

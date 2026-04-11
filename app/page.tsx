@@ -259,51 +259,18 @@ function HomeContent() {
   const maxColsByBreakpoint = vw >= 1536 ? 10 : vw >= 1280 ? 8 : vw >= 1024 ? 6 : vw >= 768 ? 4 : vw >= 640 ? 3 : 2;
   const gridColsResponsive = Math.min(maxColsByBreakpoint, Math.max(2, Math.floor(Math.sqrt(visibleNodes))));
   const testimonialsData = [
-    {
-      initials: "AK",
-      name: "Ali Khan",
-      city: "Karachi",
-      text: "Digital Community Magnet makes our team structure clear—invites, depth, and rewards are easy to follow in one place.",
-    },
-    {
-      initials: "MS",
-      name: "Mehak Shah",
-      city: "Lahore",
-      text: "The platform feels built for growth: secure access, transparent levels, and a focus on helping the community scale together.",
-    },
-    {
-      initials: "HF",
-      name: "Haris Farooq",
-      city: "Islamabad",
-      text: "I value the emphasis on connectivity—dashboard and landing both reinforce that we’re one network working toward shared goals.",
-    },
+    { initials: "AK", name: "Ali Khan", city: "Karachi", text: "The UI is simple and fast. The binary preview explains growth clearly." },
+    { initials: "MS", name: "Mehak Shah", city: "Lahore", text: "Light theme is readable. Forms are clean and minimal." },
+    { initials: "HF", name: "Haris Farooq", city: "Islamabad", text: "Responsive grid looks great; smooth on mobile too." },
   ];
   const [tIndex, setTIndex] = useState(0);
   const faqsData = [
-    {
-      q: "What is Digital Community Magnet?",
-      a: "It is our community-growth platform: invite partners, build your team in a binary structure, and track progress with clear, level-based mechanics.",
-    },
-    {
-      q: "What is the binary structure?",
-      a: "Each member may add two direct partners. The network expands by levels (for example L0=1, L1=3, L2=7, and so on) so growth stays organized and visible.",
-    },
-    {
-      q: "How many levels can I explore in the tree?",
-      a: "You can explore the structure visualization up to 33 levels to understand depth and team size.",
-    },
-    {
-      q: "Which levels receive payouts?",
-      a: "Commission payouts apply to the first 20 levels. Deeper levels remain visible for planning and transparency where configured.",
-    },
-    {
-      q: "How do I join?",
-      a: "Use Login or Sign Up, complete registration (including referral code when you have one), and verify your account per the on-screen steps.",
-    },
-    {
-      q: "Is my account information protected?",
-      a: "We treat sign-in and profile data with standard security practices; use a strong password and keep your credentials private.",
-    },
+    { q: "What is a binary structure?", a: "Each user adds two members. Levels grow like: L0=1, L1=3, L2=7, and so on." },
+    { q: "How many levels are supported?", a: "The UI preview supports up to 33 levels." },
+    { q: "Do payouts cover all 33 levels?", a: "No. Payouts are limited to the first 20 levels. Levels beyond 20 are visual only." },
+    { q: "How do I create an account?", a: "Use the Login/Sign Up button; submit the form to start the flow." },
+    { q: "Are real payouts implemented?", a: "This is a UI preview; payouts/APIs can be connected next." },
+    { q: "How does it look on mobile?", a: "Responsive grid adapts; fewer columns show on smaller screens." },
   ];
   const [showPassword, setShowPassword] = useState(false);
   const [openFaqs, setOpenFaqs] = useState<number[]>([]);
@@ -421,11 +388,7 @@ function HomeContent() {
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <div className="flex items-center gap-3">
-                <img
-                  src="/logo.jpeg"
-                  alt="Digital Community Magnet"
-                  className="h-9 w-auto max-w-[min(100%,280px)] rounded-md ring-1 ring-ring object-left object-contain sm:h-10"
-                />
+                <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
                 <div className="hidden items-center gap-4 lg:flex ml-4">
                   <Link href="/about" className="text-xs font-medium text-subtext transition hover:text-primary">About Us</Link>
                   <Link href="/terms" className="text-xs font-medium text-subtext transition hover:text-primary">Terms</Link>
@@ -433,7 +396,7 @@ function HomeContent() {
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur sm:flex">
                 <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(0,201,255,0.35)]" />
-                <span className="text-[10px] sm:text-xs tracking-wide text-accent">Connecting &amp; growing together</span>
+                <span className="text-[10px] sm:text-xs tracking-wide text-accent">Connecting People & Ideas</span>
               </div>
             </div>
             <div className="flex items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
@@ -477,14 +440,10 @@ function HomeContent() {
           <div className="mt-10 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
             <div>
               <h1 className="max-w-4xl text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-                Digital Community Magnet
+                Clean, modern MLM landing with Electric Orange accents.
               </h1>
-              <p className="mt-3 max-w-2xl text-pretty text-sm font-medium text-accent sm:text-base">
-                Connecting &amp; growing together
-              </p>
               <p className="mt-4 max-w-2xl text-pretty text-subtext">
-                Grow a connected team in a secure digital environment: invite partners, follow a clear binary structure, and see depth and rewards explained
-                transparently—so your community can scale with confidence.
+                Each user can invite two members. The binary structure visualizes up to 33 levels; payouts are limited to the first 20 levels.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <a className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90" href="#levels">
@@ -508,34 +467,32 @@ function HomeContent() {
                   <div className="mt-2 text-2xl font-semibold">1 → 2</div>
                 </div>
                 <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-                  <div className="text-xs text-subtext">Network</div>
-                  <div className="mt-2 text-2xl font-semibold">Secure</div>
+                  <div className="text-xs text-subtext">Mode</div>
+                  <div className="mt-2 text-2xl font-semibold">UI Only</div>
                 </div>
               </div>
             </div>
             <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-              <div className="text-sm text-subtext">Community snapshot</div>
-              <div className="mt-2 text-2xl font-semibold">Built for digital growth</div>
+              <div className="text-sm text-subtext">Today’s Snapshot</div>
+              <div className="mt-2 text-2xl font-semibold">Binary Growth Preview</div>
               <div className="mt-6 grid gap-4">
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Direct partners</span>
+                  <span className="text-sm text-subtext">Direct Invites</span>
                   <span className="text-lg font-semibold text-foreground">2</span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Structure depth (view)</span>
-                  <span className="text-lg font-semibold text-foreground">33 levels</span>
+                  <span className="text-sm text-subtext">Max Depth</span>
+                  <span className="text-lg font-semibold text-foreground">33 Levels</span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Reward depth</span>
-                  <span className="text-lg font-semibold text-foreground">20 levels</span>
+                  <span className="text-sm text-subtext">Primary Tone</span>
+                  <span className="text-lg font-semibold text-foreground">Teal</span>
                 </div>
               </div>
               <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                <div className="text-xs uppercase text-subtext">Brand focus</div>
-                <div className="mt-2 text-2xl font-semibold">Secure connectivity</div>
-                <div className="mt-3 text-sm text-subtext">
-                  Navy and cyan accents, clear hierarchy, and a network-first experience aligned with Digital Community Magnet.
-                </div>
+                <div className="text-xs uppercase text-subtext">Theme</div>
+                <div className="mt-2 text-2xl font-semibold">Blackberry Contrast</div>
+                <div className="mt-3 text-sm text-subtext">Sharp, modern, fintech-grade surfaces.</div>
               </div>
             </div>
           </div>
@@ -546,10 +503,8 @@ function HomeContent() {
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Level explorer</h2>
-              <p className="mt-1 text-sm text-subtext">
-                See how your community expands by level—use the slider to explore depth and scale.
-              </p>
+              <h2 className="text-2xl font-semibold">Level Explorer</h2>
+              <p className="mt-1 text-sm text-subtext">Binary growth preview.</p>
             </div>
             <div className="flex w-full max-w-md items-center gap-4">
               <input
@@ -618,19 +573,19 @@ function HomeContent() {
 
       <section id="how-it-works" className="mx-auto max-w-7xl px-4 pb-24 sm:px-6">
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
-          <h2 className="text-2xl font-semibold">How it works</h2>
+          <h2 className="text-2xl font-semibold">How It Works</h2>
           <div className="mt-6 grid gap-6 sm:grid-cols-3">
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Invite &amp; connect</div>
-              <div className="mt-1 text-lg">Each member may add two direct partners—building a structured, easy-to-follow network.</div>
+              <div className="text-sm text-subtext">Binary Join</div>
+              <div className="mt-1 text-lg">Each user invites two members</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Grow by levels</div>
-              <div className="mt-1 text-lg">The tree can extend deep; explore up to 33 levels to understand team breadth and momentum.</div>
+              <div className="text-sm text-subtext">Levels</div>
+              <div className="mt-1 text-lg">Structure expands up to 33 levels</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Join the platform</div>
-              <div className="mt-1 text-lg">Create your account with Login or Sign Up, then access your dashboard and tools.</div>
+              <div className="text-sm text-subtext">Accounts</div>
+              <div className="mt-1 text-lg">Create your account via Login / Sign Up</div>
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -738,7 +693,7 @@ function HomeContent() {
       <footer className="mx-auto max-w-7xl px-6 pb-12">
         <div className="flex flex-col items-center justify-between gap-6 rounded-3xl bg-muted p-8 text-sm text-subtext ring-1 ring-ring sm:flex-row">
           <div className="flex flex-col items-center gap-2 sm:items-start">
-            <div className="text-lg font-bold text-foreground">Digital Community Magnet</div>
+            <div className="text-lg font-bold text-foreground">MLM Marketing</div>
             <div>© {new Date().getFullYear()} All rights reserved</div>
           </div>
           
