@@ -1,5 +1,0 @@
-# Store text files as LF in Git (same as Linux / Vercel). Stops "LF vs CRLF" noise on Windows.
-* text=auto eol=lf
-
-# Binary assets — never line-ending normalize
-*.{png,jpg,jpeg,gif,ico,webp,woff,woff2,eot,ttf} binary

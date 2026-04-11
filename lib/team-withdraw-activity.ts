@@ -87,8 +87,7 @@ export async function applyAutoWithdrawSuspendIfStaleForUser(
     select: { status: true, adminRoleId: true, lastDownlineActivityAt: true },
   });
   if (!u || u.status !== "active" || u.adminRoleId != null) return;
-  const last = u.lastDownlineActivityAt;
-  if (last != null && last.getTime() >= cutoff.getTime()) return;
+  if (u.lastDownlineActivityAt >= cutoff) return;
   await db.user.update({
     where: { id: userId },
     data: {
@@ -96,28 +95,6 @@ export async function applyAutoWithdrawSuspendIfStaleForUser(
       withdrawSuspendSource: AUTO_SUSPEND_SOURCE,
     },
   });
-}
-
-/**
- * Runs stale check for this user and up to {@link TEAM_UPLINE_STEPS} sponsors above (same tree path).
- * Global downline sweep stays on cron / per-request for self only to avoid heavy queries.
- */
-export async function applyAutoWithdrawSuspendIfStaleForUserAndUpline(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-): Promise<void> {
-  await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
-  let currentId: string | null = userId;
-  for (let depth = 0; depth < TEAM_UPLINE_STEPS; depth++) {
-    if (currentId == null) break;
-    const row: { referredById: string | null } | null = await db.user.findUnique({
-      where: { id: currentId },
-      select: { referredById: true },
-    });
-    if (!row?.referredById) break;
-    await applyAutoWithdrawSuspendIfStaleForUser(db, row.referredById);
-    currentId = row.referredById;
-  }
 }
 
 /**

@@ -3,10 +3,9 @@ import { getDb } from "@/lib/db";
 import { runTeamWithdrawAutoSuspendSweep } from "@/lib/team-withdraw-activity";
 
 /**
- * Periodic job (see vercel.json): suspend active members with stale team activity
- * (see TEAM_INACTIVITY_MINUTES in lib/team-withdraw-activity.ts).
- * Vercel: set CRON_SECRET in project env — cron requests send Authorization: Bearer <CRON_SECRET>.
- * Manual: GET /api/cron/team-withdraw-suspend with the same header.
+ * Daily (or periodic) job: suspend withdrawals for active members with no new downline
+ * activity in the last 10 minutes (temp; restore to 10 days in lib/team-withdraw-activity.ts when requested).
+ * Set CRON_SECRET in .env and call: GET /api/cron/team-withdraw-suspend with Authorization: Bearer <CRON_SECRET>
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;

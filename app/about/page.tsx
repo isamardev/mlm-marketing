@@ -25,7 +25,7 @@ export default function AboutPage() {
           <section className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
             <h2 className="text-2xl font-semibold text-foreground mb-4">Our Mission</h2>
             <p>
-              Digital Community Magnet exists to help people connect and grow together online: a transparent binary team structure, clear levels, and tools that make networking and progress easy to understand—so members can focus on building real relationships and momentum.
+              Welcome to MLM Marketing, a next-generation platform designed to connect people and ideas through a transparent and robust binary network structure. Our mission is to empower individuals by providing a scalable environment where growth is limited only by your ambition.
             </p>
           </section>
 
@@ -33,7 +33,7 @@ export default function AboutPage() {
             <div className="rounded-2xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring">
               <h3 className="text-xl font-semibold text-foreground mb-3">Who We Are</h3>
               <p className="text-sm">
-                We build Digital Community Magnet as a secure, responsive platform for community-driven growth: sign-in, dashboard, and team views are designed so members always know where they stand in the network.
+                We are a team of passionate developers and financial enthusiasts dedicated to building secure, fast, and intuitive fintech-grade surfaces. Our platform uses modern technology to ensure your data and transactions are always safe.
               </p>
             </div>
             <div className="rounded-2xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring">
@@ -70,10 +70,10 @@ export default function AboutPage() {
 
       <footer className="mx-auto max-w-7xl px-6 py-12">
         <div className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-muted p-6 text-sm text-subtext ring-1 ring-ring sm:flex-row">
-          <div>© {new Date().getFullYear()} Digital Community Magnet</div>
+          <div>© {new Date().getFullYear()} MLM Marketing</div>
           <div className="inline-flex items-center gap-2">
             <span className="h-3 w-3 rounded-full bg-primary shadow-[0_0_10px_rgba(0,178,163,0.35)]" />
-            <span>Connecting &amp; growing together</span>
+            <span>Teal accent theme</span>
           </div>
         </div>
       </footer>

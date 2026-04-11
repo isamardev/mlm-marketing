@@ -47,11 +47,7 @@ export async function PATCH(req: Request) {
       } else {
         await db.user.update({
           where: { id: parsed.data.id },
-          data: {
-            status: "active",
-            withdrawSuspendSource: null,
-            lastDownlineActivityAt: new Date(),
-          },
+          data: { status: "active", withdrawSuspendSource: null },
         });
       }
       const updated = await db.user.findUnique({
