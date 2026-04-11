@@ -4,7 +4,7 @@ import { runTeamWithdrawAutoSuspendSweep } from "@/lib/team-withdraw-activity";
 
 /**
  * Daily (or periodic) job: suspend withdrawals for active members with no new downline
- * activity in the last 10 days (10 upline levels refresh on each new registration).
+ * activity in the last 10 minutes (temp; restore to 10 days in lib/team-withdraw-activity.ts when requested).
  * Set CRON_SECRET in .env and call: GET /api/cron/team-withdraw-suspend with Authorization: Bearer <CRON_SECRET>
  */
 export async function GET(req: Request) {

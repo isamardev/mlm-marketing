@@ -3,15 +3,20 @@ import type { getDb } from "@/lib/db";
 
 /** How many upline ancestors get activity + optional auto-restore on each new registration. */
 export const TEAM_UPLINE_STEPS = 10;
-/** Inactivity window before auto withdraw_suspend (same calendar days). */
-export const TEAM_INACTIVITY_DAYS = 10;
+/**
+ * Inactivity window before auto `withdraw_suspend` (team / downline activity).
+ * TEMP: 10 minutes for testing — set back to 10 days when requested (use days in cutoff below).
+ */
+export const TEAM_INACTIVITY_MINUTES = 10;
+/** Production value to restore: `10` days — replace minutes logic in `inactivityCutoff()` with `setDate`. */
+export const TEAM_INACTIVITY_DAYS_PRODUCTION = 10;
 
 export const AUTO_SUSPEND_SOURCE = "auto_team_inactivity" as const;
 export const MANUAL_SUSPEND_SOURCE = "manual" as const;
 
 function inactivityCutoff(): Date {
   const d = new Date();
-  d.setDate(d.getDate() - TEAM_INACTIVITY_DAYS);
+  d.setMinutes(d.getMinutes() - TEAM_INACTIVITY_MINUTES);
   return d;
 }
 

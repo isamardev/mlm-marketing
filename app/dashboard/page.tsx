@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FaUser, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaTelegramPlane, FaWhatsapp, FaCog, FaSignOutAlt, FaUserCircle, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import { WHATSAPP_CHANNEL_URL } from "@/lib/support-links";
 import { DEFAULT_RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
 import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
@@ -325,7 +326,7 @@ function WithdrawSection({
             <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
             <p className="mt-2 text-xs text-subtext">
               {withdrawAutoTeamSuspend
-                ? "No downline activation in the last 10 days (activity counts up to 10 upline levels when someone activates). Add a team member who completes activation — withdrawals unlock automatically."
+                ? "No downline activation in the last 10 minutes (activity counts up to 10 upline levels when someone activates). Add a team member who completes activation — withdrawals unlock automatically."
                 : "Your withdrawal is suspended. Please contact customer support."}
             </p>
             <p className="mt-2 text-xs text-subtext">
@@ -2055,7 +2056,7 @@ export default function UserDashboardPage() {
                       { href: "https://instagram.com", icon: <FaInstagram size={22} />, name: "Instagram" },
                       { href: "https://youtube.com", icon: <FaYoutube size={22} />, name: "YouTube" },
                       { href: "https://t.me", icon: <FaTelegramPlane size={22} />, name: "Telegram" },
-                      { href: "https://wa.me", icon: <FaWhatsapp size={22} />, name: "WhatsApp" },
+                      { href: WHATSAPP_CHANNEL_URL, icon: <FaWhatsapp size={22} />, name: "WhatsApp" },
                     ].map((s) => (
                       <a
                         key={s.name}
@@ -2522,7 +2523,7 @@ export default function UserDashboardPage() {
                     <div className="font-semibold text-amber-700 dark:text-amber-400">Transfer from withdraw wallet locked</div>
                     <p className="mt-2 text-xs text-subtext">
                       {profile?.withdrawSuspendSource === "auto_team_inactivity"
-                        ? "No downline activation in the last 10 days. Add a team member who completes activation — withdrawals unlock automatically."
+                        ? "No downline activation in the last 10 minutes. Add a team member who completes activation — withdrawals unlock automatically."
                         : "Your withdrawal is suspended. Please contact customer support."}
                     </p>
                   </div>
