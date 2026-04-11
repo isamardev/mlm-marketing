@@ -13,7 +13,6 @@ import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
 import { isActivatedMemberStatus } from "@/lib/user-status";
 import { copyTextToClipboard } from "@/lib/copy-text";
 import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
-import { whatsappMeUrlFromRawNumber } from "@/lib/whatsapp-url";
 
 const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
@@ -1266,7 +1265,6 @@ export default function UserDashboardPage() {
   const [uplineNodes, setUplineNodes] = useState<any[] | null>(null);
   const [notifications, setNotifications] = useState<any[] | null>(null);
   const [unread, setUnread] = useState<number>(0);
-  const [supportWhatsAppUrl, setSupportWhatsAppUrl] = useState<string | null>(null);
   const [uiMessage, setUiMessage] = useState("");
   const [origin, setOrigin] = useState("");
   const [receiverWalletAddress, setReceiverWalletAddress] = useState(DEFAULT_RECEIVER_WALLET_ADDRESS);
@@ -1454,13 +1452,8 @@ export default function UserDashboardPage() {
       try {
         const res = await fetch("/api/public/settings", { cache: "no-store" });
         const data = await res.json();
-        if (res.ok) {
-          if (typeof data?.receiverWalletAddress === "string" && data.receiverWalletAddress.trim()) {
-            setReceiverWalletAddress(data.receiverWalletAddress.trim());
-          }
-          if (typeof data?.whatsappNumber === "string") {
-            setSupportWhatsAppUrl(whatsappMeUrlFromRawNumber(data.whatsappNumber));
-          }
+        if (res.ok && typeof data?.receiverWalletAddress === "string" && data.receiverWalletAddress.trim()) {
+          setReceiverWalletAddress(data.receiverWalletAddress.trim());
         }
       } catch {
         /* keep fallback */
@@ -2034,28 +2027,11 @@ export default function UserDashboardPage() {
             {active === "home" && (
               <div className="space-y-6">
                 <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] sm:p-8 overflow-hidden">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-sm text-subtext">Welcome back</div>
-                      <div className="mt-1 text-2xl font-semibold">{profile?.username ?? "User"}</div>
-                      <div className="mt-2 max-w-2xl text-sm text-subtext">
-                        {uiMessage ? uiMessage : "Your balances, team stats, and activity will show here."}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (supportWhatsAppUrl) {
-                            window.open(supportWhatsAppUrl, "_blank", "noopener,noreferrer");
-                          } else {
-                            toast.error("Support WhatsApp number is not configured yet.");
-                          }
-                        }}
-                        className="inline-flex items-center justify-center rounded-full bg-card px-5 py-2 text-sm font-medium text-foreground shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)] transition hover:bg-muted w-full sm:w-auto"
-                      >
-                        Support
-                      </button>
+                  <div>
+                    <div className="text-sm text-subtext">Welcome back</div>
+                    <div className="mt-1 text-2xl font-semibold">{profile?.username ?? "User"}</div>
+                    <div className="mt-2 max-w-2xl text-sm text-subtext">
+                      {uiMessage ? uiMessage : "Your balances, team stats, and activity will show here."}
                     </div>
                   </div>
 
