@@ -76,10 +76,7 @@ export async function onNewMemberRegistered(
   }
 }
 
-/**
- * Applies the same rule as {@link runTeamWithdrawAutoSuspendSweep} for one user — call on dashboard
- * / withdraw so the 10-minute window takes effect without waiting for cron (daily cron is too slow for minutes).
- */
+// Same inactivity rule as runTeamWithdrawAutoSuspendSweep, for one user (dashboard or withdraw routes).
 export async function applyAutoWithdrawSuspendIfStaleForUser(
   db: ReturnType<typeof getDb>,
   userId: string,
