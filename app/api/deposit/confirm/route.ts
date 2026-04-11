@@ -26,12 +26,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const txHash = `demo:${Date.now()}:${parsed.data.sourceUserId}`;
+    const txHash = `app:${Date.now()}:${parsed.data.sourceUserId}`;
     await finalizeVerifiedDeposit({
       userId: parsed.data.sourceUserId,
       txHash,
       amount: Number(parsed.data.amount.toFixed(2)),
-      note: parsed.data.note || "Demo deposit",
+      note: parsed.data.note || "Deposit",
     });
 
     return NextResponse.json({ success: true });

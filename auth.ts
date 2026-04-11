@@ -71,11 +71,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             }
           }
 
-          if (email === "admin@example.com" && password === "admin123") {
+          const adminEmail = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
+          const adminPassword = process.env.ADMIN_PASSWORD ?? "admin123";
+          if (
+            email.trim().toLowerCase() === adminEmail &&
+            password === adminPassword
+          ) {
+            const adminSessionEmail = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim();
             return {
               id: "admin-fixed",
               name: "Admin",
-              email: "admin@example.com",
+              email: adminSessionEmail,
               status: "admin",
             };
           }

@@ -17,9 +17,8 @@ const KEY_SET = new Set<string>(ADMIN_SECTION_KEYS);
 export function isSuperAdminIdentity(userId: string, email: string | null | undefined): boolean {
   if (userId === "admin-fixed") return true;
   const e = (email ?? "").toLowerCase();
-  if (e === "admin@example.com") return true;
-  const env = process.env.ADMIN_EMAIL?.toLowerCase();
-  if (env && e === env) return true;
+  const configured = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
+  if (configured && e === configured) return true;
   return false;
 }
 

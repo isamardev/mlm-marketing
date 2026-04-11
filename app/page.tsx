@@ -726,7 +726,7 @@ function HomeContent() {
           <button
             type="button"
             onClick={() => setAuthOpen(false)}
-            className="absolute inset-0 bg-black/30"
+            className="absolute inset-0 bg-background/95 backdrop-blur-2xl backdrop-saturate-50 dark:bg-neutral-950/95"
             aria-label="Close"
           />
           {toastMessage ? (

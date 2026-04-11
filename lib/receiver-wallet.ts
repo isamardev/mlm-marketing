@@ -91,17 +91,22 @@ export async function writeWhatsAppAndReceiverToDb(
   }
 }
 
+/**
+ * Deposit receiver USDT (BEP20) address — configure with `RECEIVER_WALLET_ADDRESS` or
+ * `RECEIVER_BEP20_ADDRESS` in the environment (same pattern as SMTP / OTP secrets).
+ * Invalid or missing values fall back to {@link DEFAULT_RECEIVER_WALLET_ADDRESS}.
+ */
+export function getResolvedReceiverWalletAddress(): string {
+  const raw = (process.env.RECEIVER_WALLET_ADDRESS ?? process.env.RECEIVER_BEP20_ADDRESS ?? "").trim();
+  if (!raw) return DEFAULT_RECEIVER_WALLET_ADDRESS;
+  const value = normalizeBep20AddressInput(raw);
+  return BEP20_HEX.test(value) ? value : DEFAULT_RECEIVER_WALLET_ADDRESS;
+}
+
 export async function getReceiverWalletAddress() {
-  const db = getDb();
-  try {
-    const { receiverWalletAddress } = await readWhatsAppAndReceiverFromDb(db);
-    const value = normalizeBep20AddressInput(receiverWalletAddress);
-    return BEP20_HEX.test(value) ? value : DEFAULT_RECEIVER_WALLET_ADDRESS;
-  } catch {
-    return DEFAULT_RECEIVER_WALLET_ADDRESS;
-  }
+  return getResolvedReceiverWalletAddress();
 }
 
 export async function getNormalizedReceiverWalletAddress() {
-  return (await getReceiverWalletAddress()).toLowerCase();
+  return getResolvedReceiverWalletAddress().toLowerCase();
 }

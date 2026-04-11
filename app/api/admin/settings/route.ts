@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import {
-  coalesceBep20ForSave,
-  readWhatsAppAndReceiverFromDb,
-  writeWhatsAppAndReceiverToDb,
-} from "@/lib/receiver-wallet";
+import { readWhatsAppAndReceiverFromDb, writeWhatsAppAndReceiverToDb } from "@/lib/receiver-wallet";
 import { requireAdminSection } from "@/lib/admin-api-guard";
 import { DEFAULT_LEVEL_PERCENTAGES, MLM_SETTINGS_KEY } from "@/lib/mlm-logic";
-
-const BEP20_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 
 const patchSchema = z.object({
   levelPercentages: z.array(z.number().min(0)).length(20).optional(),
   whatsappNumber: z.string().optional(),
-  receiverWalletAddress: z.string().optional(),
 });
 
 async function ensureSettingsColumns(db: ReturnType<typeof getDb>) {
@@ -24,13 +17,6 @@ async function ensureSettingsColumns(db: ReturnType<typeof getDb>) {
     );
   } catch {
     /* older PG without IF NOT EXISTS — ignore */
-  }
-  try {
-    await db.$executeRawUnsafe(
-      `ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "receiverWalletAddress" TEXT`,
-    );
-  } catch {
-    /* ignore */
   }
 }
 
@@ -63,30 +49,13 @@ export async function PATCH(req: Request) {
     }
 
     const db = getDb();
-    const { whatsappNumber, receiverWalletAddress } = parsed.data;
+    const { whatsappNumber } = parsed.data;
 
     await ensureSettingsColumns(db);
-
-    const normalizedReceiverWalletAddress =
-      receiverWalletAddress === undefined
-        ? undefined
-        : coalesceBep20ForSave(receiverWalletAddress);
-    if (
-      normalizedReceiverWalletAddress !== undefined &&
-      normalizedReceiverWalletAddress.length > 0 &&
-      !BEP20_ADDRESS_RE.test(normalizedReceiverWalletAddress)
-    ) {
-      return NextResponse.json({ error: "INVALID_RECEIVER_ADDRESS" }, { status: 400 });
-    }
     await ensureSettingsRow(db);
 
-    // Use Prisma updates so we always write the schema column `"receiverWalletAddress"` (PostgreSQL
-    // raw SQL without quotes targets a different lowercase column than Prisma migrations).
-    const data: { whatsapp?: string; receiverWalletAddress?: string | null } = {};
+    const data: { whatsapp?: string } = {};
     if (whatsappNumber !== undefined) data.whatsapp = whatsappNumber;
-    if (normalizedReceiverWalletAddress !== undefined) {
-      data.receiverWalletAddress = normalizedReceiverWalletAddress || null;
-    }
     if (Object.keys(data).length > 0) {
       await writeWhatsAppAndReceiverToDb(db, data);
     }
@@ -96,7 +65,6 @@ export async function PATCH(req: Request) {
     return NextResponse.json({
       success: true,
       whatsappNumber: fresh.whatsapp,
-      receiverWalletAddress: fresh.receiverWalletAddress,
     });
   } catch (e) {
     console.error("PATCH /api/admin/settings:", e);
@@ -119,7 +87,6 @@ export async function GET() {
       key: setting.key,
       levelPercentages: setting.levelPercentages,
       whatsappNumber: extras.whatsapp,
-      receiverWalletAddress: extras.receiverWalletAddress,
     });
   } catch {
     return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });

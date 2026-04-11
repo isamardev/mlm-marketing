@@ -4,7 +4,6 @@ import { signOut, useSession } from "next-auth/react";
 import { FaUser, FaSignOutAlt, FaEye, FaEyeSlash } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
-import { coalesceBep20ForSave } from "@/lib/receiver-wallet";
 import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 type NavItem = {
@@ -394,9 +393,7 @@ export function AdminPanelClient() {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
-  const [receiverWalletAddress, setReceiverWalletAddress] = useState("");
-  const [savedReceiverWalletAddress, setSavedReceiverWalletAddress] = useState("");
-  /** Prevents background poll / refetch from overwriting WhatsApp + receiver fields while editing. */
+  /** Prevents background poll / refetch from overwriting WhatsApp while editing. */
   const settingsDraftDirtyRef = useRef(false);
   const [levelsMsg, setLevelsMsg] = useState("");
   const [adminTreeNodes, setAdminTreeNodes] = useState<any[]>([]);
@@ -745,11 +742,8 @@ export function AdminPanelClient() {
       if (!settingsRes.ok) return;
       const l = await settingsRes.json();
       const nextWhatsapp = String(l?.whatsappNumber ?? "");
-      const nextReceiver = String(l?.receiverWalletAddress ?? "");
-      setSavedReceiverWalletAddress(nextReceiver);
       if (!settingsDraftDirtyRef.current || opts?.force) {
         setWhatsappNumber(nextWhatsapp);
-        setReceiverWalletAddress(nextReceiver);
       }
     },
     [canAdminSection, session?.user?.id, session?.user?.status, status],
@@ -1474,42 +1468,9 @@ export function AdminPanelClient() {
                   </label>
                 </div>
 
-                <div className="mt-4 min-w-0 p-3 sm:p-4 rounded-2xl bg-muted ring-1 ring-ring">
-                  <div className="text-sm font-medium mb-4">Receiver Address</div>
-                  <label className="grid min-w-0 gap-2">
-                    <span className="text-xs font-medium text-subtext">USDT BEP20 receiver address shared with all users</span>
-                    {savedReceiverWalletAddress ? (
-                      <div className="min-w-0 overflow-hidden rounded-2xl bg-background px-3 py-3 text-[11px] font-mono leading-relaxed text-subtext [overflow-wrap:anywhere] break-all ring-1 ring-ring sm:px-4 sm:text-xs">
-                        <span className="block text-[10px] font-sans font-medium text-subtext sm:inline sm:pr-1">
-                          Current saved:
-                        </span>
-                        {savedReceiverWalletAddress}
-                      </div>
-                    ) : null}
-                    <input
-                      type="text"
-                      name="cfg-value-1"
-                      autoComplete="new-password"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                      inputMode="text"
-                      value={receiverWalletAddress}
-                      onChange={(e) => {
-                        settingsDraftDirtyRef.current = true;
-                        setReceiverWalletAddress(e.target.value);
-                      }}
-                      className="h-11 w-full min-w-0 rounded-2xl bg-background px-3 text-xs font-mono text-foreground ring-1 ring-ring outline-none [overflow-wrap:anywhere] break-all focus:ring-2 focus:ring-primary/30 sm:px-4 sm:text-sm"
-                      placeholder="0x followed by 40 hex characters"
-                    />
-                  </label>
-                  <p className="mt-2 text-xs text-subtext">
-                    Users will see this same address on the deposit screen. Only a valid BEP20 address is allowed.
-                  </p>
-                </div>
+                <p className="mt-4 text-xs text-subtext">
+                  Deposit receiver (USDT BEP20) is set in server environment: <span className="font-medium text-foreground">RECEIVER_WALLET_ADDRESS</span>.
+                </p>
 
                 {levelsMsg ? <div className="mt-4 rounded-2xl bg-card p-4 text-sm text-subtext ring-1 ring-ring">{levelsMsg}</div> : null}
                 <div className="mt-6">
@@ -1517,36 +1478,20 @@ export function AdminPanelClient() {
                     type="button"
                     onClick={async () => {
                       setLevelsMsg("");
-                      const nextReceiverWalletAddress = coalesceBep20ForSave(receiverWalletAddress);
-                      if (
-                        nextReceiverWalletAddress.length > 0 &&
-                        !BEP20_USDT_ADDRESS_RE.test(nextReceiverWalletAddress)
-                      ) {
-                        setLevelsMsg("Enter a valid BEP20 receiver address.");
-                        return;
-                      }
                       try {
                         const res = await fetch("/api/admin/settings", {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ 
+                          body: JSON.stringify({
                             whatsappNumber: whatsappNumber.trim(),
-                            receiverWalletAddress: nextReceiverWalletAddress,
                           }),
                         });
                         const data = await res.json();
                         if (!res.ok) {
-                          if (data?.error === "INVALID_RECEIVER_ADDRESS") {
-                            setLevelsMsg("Enter a valid BEP20 receiver address.");
-                            return;
-                          }
                           setLevelsMsg(typeof data?.error === "string" ? data.error : "Save failed");
                           return;
                         }
                         settingsDraftDirtyRef.current = false;
-                        const saved = String(data?.receiverWalletAddress ?? nextReceiverWalletAddress);
-                        setReceiverWalletAddress(saved);
-                        setSavedReceiverWalletAddress(saved);
                         setLevelsMsg("Saved");
                       } catch {
                         setLevelsMsg("Save failed");

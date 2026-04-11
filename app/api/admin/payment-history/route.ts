@@ -123,7 +123,7 @@ export async function GET(req: Request) {
         for (const u of approvers) {
           approverById.set(u.id, { username: u.username, email: u.email });
         }
-        // Hardcoded NextAuth id for demo admin login — no User row in DB
+        // Hardcoded NextAuth id for admin login without a User row in DB
         for (const aid of approverIds) {
           if (approverById.has(aid)) continue;
           if (aid === "admin-fixed") {

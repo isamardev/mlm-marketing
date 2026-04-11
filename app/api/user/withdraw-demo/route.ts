@@ -195,6 +195,6 @@ export async function POST(req: Request) {
       feePoolShare,
     });
   } catch {
-    return NextResponse.json({ error: "Demo withdrawal failed" }, { status: 500 });
+    return NextResponse.json({ error: "Withdrawal failed" }, { status: 500 });
   }
 }

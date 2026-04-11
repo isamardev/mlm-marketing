@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
-export default function DepositButton({ amount = 10, userId = "", fullWidth = false, label = "Pay Demo", onSuccess }) {
+export default function DepositButton({ amount = 10, userId = "", fullWidth = false, label = "Pay", onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -13,7 +13,7 @@ export default function DepositButton({ amount = 10, userId = "", fullWidth = fa
       const res = await fetch("/api/deposit/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceUserId: userId, amount: Number(amount), note: "Demo deposit" }),
+        body: JSON.stringify({ sourceUserId: userId, amount: Number(amount), note: "Deposit" }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -22,7 +22,7 @@ export default function DepositButton({ amount = 10, userId = "", fullWidth = fa
         setLoading(false);
         return;
       }
-      toast.success("Demo deposit credited");
+      toast.success("Deposit credited");
       if (typeof window !== "undefined") {
         try {
           window.dispatchEvent(new Event("deposit:updated"));

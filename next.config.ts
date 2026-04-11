@@ -84,6 +84,20 @@ const nextConfig: NextConfig = {
   },
   /** `npm run dev` uses webpack — silence optional wallet SDK deps that slow resolution */
   webpack: (config, { isServer }) => {
+    if (isServer && process.env.VERCEL !== "1") {
+      /**
+       * Local `node_modules` often lacks Neon packages if `package-lock.json` is stale or
+       * `npm install` was skipped — but `lib/db.ts` only uses them when `VERCEL=1` + Neon URL.
+       * Alias to stubs so dev/build works; Vercel production keeps real packages (VERCEL=1).
+       */
+      const stub = (file: string) => path.join(projectRoot, "lib", "stubs", file);
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@prisma/adapter-neon": stub("prisma-adapter-neon.ts"),
+        "@neondatabase/serverless": stub("neondatabase-serverless.ts"),
+        ws: stub("ws.ts"),
+      };
+    }
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,

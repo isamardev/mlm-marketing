@@ -39,7 +39,7 @@ export default function AdminDashboardPage() {
     if (!isAdmin) return;
     const loadSettings = async () => {
       try {
-        const res = await fetch("/api/admin/settings", { cache: "no-store" });
+        const res = await fetch("/api/public/settings", { cache: "no-store" });
         const data = await res.json();
         if (res.ok && typeof data?.receiverWalletAddress === "string" && data.receiverWalletAddress.trim()) {
           setReceiverWalletAddress(data.receiverWalletAddress.trim());

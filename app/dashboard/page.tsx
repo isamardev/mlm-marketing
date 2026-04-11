@@ -294,8 +294,8 @@ function WithdrawSection({
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg(typeof data?.error === "string" ? data.error : "Demo withdrawal failed");
-        toast.error(typeof data?.error === "string" ? data.error : "Demo withdrawal failed");
+        setMsg(typeof data?.error === "string" ? data.error : "Withdrawal failed");
+        toast.error(typeof data?.error === "string" ? data.error : "Withdrawal failed");
         return;
       }
       setMsg("Withdrawal requested — pending admin approval");
@@ -311,14 +311,14 @@ function WithdrawSection({
         }
       } catch {}
     } catch {
-      setMsg("Demo withdrawal failed");
-      toast.error("Demo withdrawal failed");
+      setMsg("Withdrawal failed");
+      toast.error("Withdrawal failed");
     }
   };
 
   return (
     <div className="rounded-3xl bg-card p-4 sm:p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-      <div className="text-sm font-semibold">Withdraw Funds (demo)</div>
+      <div className="text-sm font-semibold">Withdraw Funds</div>
       {withdrawSuspended ? (
         <>
           <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-foreground">
@@ -415,7 +415,7 @@ function WithdrawSection({
                   onClick={onWithdraw}
                   className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90"
                 >
-                  Demo Withdraw
+                  Withdraw
                 </button>
                 {msg ? <div className="rounded-2xl bg-background/80 p-3 text-xs text-subtext ring-1 ring-ring">{msg}</div> : null}
               </div>

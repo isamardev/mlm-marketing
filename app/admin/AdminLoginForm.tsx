@@ -7,7 +7,7 @@ import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { markSessionTabActive } from "@/lib/session-tab";
 
 export default function AdminLoginForm() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -19,21 +19,17 @@ export default function AdminLoginForm() {
     setLoading(true);
     setError("");
 
-    if (username === "admin" && password === "admin123") {
-      const result = await signIn("credentials", {
-        email: "admin@example.com",
-        password: "admin123",
-        redirect: false,
-      });
+    const result = await signIn("credentials", {
+      email: email.trim().toLowerCase(),
+      password,
+      redirect: false,
+    });
 
-      if (result?.error) {
-        setError("Login failed");
-      } else {
-        markSessionTabActive();
-        router.push("/admin");
-      }
-    } else {
+    if (result?.error) {
       setError("Invalid admin credentials");
+    } else {
+      markSessionTabActive();
+      router.push("/admin");
     }
 
     setLoading(false);
@@ -47,13 +43,14 @@ export default function AdminLoginForm() {
 
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Username</label>
+              <label className="block text-sm font-medium mb-2">Admin email</label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-2xl bg-background px-4 py-3 text-foreground ring-1 ring-ring outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder="Enter admin username"
+                placeholder="admin@yourdomain.com"
                 required
               />
             </div>
@@ -91,10 +88,6 @@ export default function AdminLoginForm() {
               {loading ? "Logging in..." : "Admin Login"}
             </button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-subtext">
-            Use username: <strong>admin</strong> and password: <strong>admin123</strong>
-          </div>
         </div>
       </div>
     </div>
