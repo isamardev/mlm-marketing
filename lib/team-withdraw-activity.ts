@@ -108,7 +108,8 @@ export async function applyAutoWithdrawSuspendIfStaleForUserAndUpline(
   await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
   let currentId: string | null = userId;
   for (let depth = 0; depth < TEAM_UPLINE_STEPS; depth++) {
-    const row = await db.user.findUnique({
+    if (currentId == null) break;
+    const row: { referredById: string | null } | null = await db.user.findUnique({
       where: { id: currentId },
       select: { referredById: true },
     });
