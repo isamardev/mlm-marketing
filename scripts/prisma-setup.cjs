@@ -24,16 +24,21 @@ function main() {
   }
 
   const outDir = path.join(root, "generated", "prisma-client");
-  try {
-    if (fs.existsSync(outDir)) {
-      console.log("[prisma-setup] Clearing", outDir, "(stale files can block generate on Windows)…");
-      fs.rmSync(outDir, { recursive: true, force: true });
+  // Full delete every run was very slow on Windows + antivirus. Only wipe when explicitly requested.
+  if (process.env.PRISMA_CLEAN_BEFORE_GENERATE === "1") {
+    try {
+      if (fs.existsSync(outDir)) {
+        console.log("[prisma-setup] PRISMA_CLEAN_BEFORE_GENERATE=1 — clearing", outDir, "…");
+        fs.rmSync(outDir, { recursive: true, force: true });
+      }
+    } catch (e) {
+      console.warn("[prisma-setup] Could not remove old output:", e?.message || e);
     }
-  } catch (e) {
-    console.warn("[prisma-setup] Could not remove old output (close editors using this folder):", e?.message || e);
   }
 
-  console.log("[prisma-setup] Generating Prisma Client (first run may download engines — can take 1–3 min)…");
+  const t0 = Date.now();
+  console.log("[prisma-setup] Generating Prisma Client …", new Date().toISOString());
+  console.log("[prisma-setup] Tip: first run may download engines (~1–3 min). Stuck >15 min? Check network / antivirus.");
   const gen = spawnSync(
     process.execPath,
     [prismaCli, "generate", "--no-hints", "--schema", schema],
@@ -49,6 +54,7 @@ function main() {
   if (gen.status !== 0) {
     process.exit(gen.status ?? 1);
   }
+  console.log("[prisma-setup] generate done in", Math.round((Date.now() - t0) / 1000), "s");
 
   const copy = spawnSync(process.execPath, [copyScript], {
     cwd: root,
