@@ -10,7 +10,7 @@ import { runTeamWithdrawAutoSuspendSweep } from "@/lib/team-withdraw-activity";
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const authOk = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  /** Vercel Cron sets this header — required for `*/10 * * * *` schedules (Bearer optional on Vercel). */
+  // Vercel Cron sets x-vercel-cron (Bearer optional on Vercel). Avoid `*/` inside block comments — breaks parsing.
   const vercelCronOk = process.env.VERCEL === "1" && req.headers.get("x-vercel-cron") === "1";
   if (!authOk && !vercelCronOk) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
