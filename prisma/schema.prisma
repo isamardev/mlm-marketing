@@ -4,6 +4,8 @@ generator client {
   provider        = "prisma-client-js"
   output          = "../generated/prisma-client"
   previewFeatures = ["driverAdapters"]
+  // Avoid extra engine downloads on CI/slow networks (does not fix all Windows stalls).
+  binaryTargets   = ["native"]
 }
 
 datasource db {

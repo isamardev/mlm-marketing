@@ -102,9 +102,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
           }
 
-          const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
           const status =
-            adminEmail && adminEmail === user.email.toLowerCase() ? "admin" : user.status;
+            adminEmail === user.email.toLowerCase() ? "admin" : user.status;
 
           return {
             id: user.id,
