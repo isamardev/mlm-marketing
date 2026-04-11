@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { getUserApiContext } from "@/lib/user-api-auth";
 import { INTERNAL_TRANSFER_WITHDRAW_TO_USDT_NOTE } from "@/lib/internal-transfer-constants";
+import { applyAutoWithdrawSuspendIfStaleForUser } from "@/lib/team-withdraw-activity";
 
 export async function POST(req: Request) {
   try {
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     }
 
     const db = getDb();
+    await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
 
     // 1. Get user and verify security code
     // Fetch all balance fields to verify correctly
