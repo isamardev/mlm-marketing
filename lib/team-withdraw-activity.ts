@@ -130,7 +130,7 @@ export async function runTeamWithdrawAutoSuspendSweep(db: ReturnType<typeof getD
     where: {
       status: "active",
       adminRoleId: null,
-      OR: [{ lastDownlineActivityAt: null }, { lastDownlineActivityAt: { lt: cutoff } }],
+      lastDownlineActivityAt: { lt: cutoff },
     },
     data: {
       status: "withdraw_suspend",
