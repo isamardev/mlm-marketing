@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 type OtpPurpose = "registration" | "withdrawal" | "password_reset";
 
@@ -89,7 +90,7 @@ function getTransporter() {
   }
 
   const secure = smtpSecure(port);
-  return nodemailer.createTransport({
+  const smtpOptions: SMTPTransport.Options = {
     host,
     port,
     secure,
@@ -97,7 +98,6 @@ function getTransporter() {
       user,
       pass,
     },
-    pool: false,
     connectionTimeout: 60_000,
     greetingTimeout: 30_000,
     socketTimeout: 60_000,
@@ -106,7 +106,8 @@ function getTransporter() {
       minVersion: "TLSv1.2" as const,
       rejectUnauthorized: process.env.SMTP_TLS_INSECURE === "true" ? false : true,
     },
-  });
+  };
+  return nodemailer.createTransport(smtpOptions);
 }
 
 /** Phrase after "so you can complete …" (matches transactional email style). */
