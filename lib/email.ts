@@ -117,13 +117,24 @@ function getCompletionTail(purpose: OtpPurpose) {
   return "your withdrawal verification";
 }
 
-function emailBrandName() {
-  return process.env.EMAIL_BRAND_NAME?.trim() || "MLM Marketing";
-}
-
 function publicSiteUrl() {
   const u = (process.env.AUTH_URL || process.env.NEXTAUTH_URL || "").trim();
   return u.replace(/\/$/, "");
+}
+
+/** Only the @ address — strips any leading display name (e.g. MLM …) from EMAIL_FROM. */
+function smtpEnvelopeAddress(): string {
+  const raw = mailFrom();
+  const inBrackets = raw.match(/<([^>]+)>/);
+  if (inBrackets) return inBrackets[1].trim();
+  const at = raw.match(/[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}/);
+  if (at) return at[0];
+  return raw.trim();
+}
+
+/** OTP From line: fixed display name + envelope address only (never pass through MLM-style env names). */
+function otpFromHeader(): string {
+  return `Digital Community Magnet <${smtpEnvelopeAddress()}>`;
 }
 
 export async function sendOtpEmail({
@@ -135,17 +146,15 @@ export async function sendOtpEmail({
   otp: string;
   purpose: OtpPurpose;
 }) {
-  const from = mailFrom();
-
-  if (!from) {
+  if (!mailFrom()) {
     throw new Error("Email sender is not configured");
   }
 
+  const from = otpFromHeader();
   const transporter = getTransporter();
   const completionTail = getCompletionTail(purpose);
-  const brand = emailBrandName();
   const site = publicSiteUrl();
-  const subject = `[${brand}] Verification Code`;
+  const subject = "Digital Community Magnet Verification Code";
 
   const bodyIntro = `This e-mail contains your verification code, so you can complete ${completionTail}.`;
   const bodyExpire = "This code will expire in 10 minutes.";
@@ -163,7 +172,7 @@ export async function sendOtpEmail({
     "",
     bodyContact,
     "",
-    brand,
+    "Digital Community Magnet",
     site || undefined,
   ]
     .filter(Boolean)
@@ -188,7 +197,7 @@ export async function sendOtpEmail({
               <p style="margin:0 0 16px"><strong>Code : ${otp}</strong></p>
               <p style="margin:0 0 16px">${bodyExpire}</p>
               <p style="margin:0">${bodyContact}</p>
-              <p style="margin:24px 0 0;font-size:13px;color:#5f6368">${brand}</p>
+              <p style="margin:24px 0 0;font-size:13px;color:#5f6368">Digital Community Magnet</p>
               ${footerLink ? `<p style="margin:8px 0 0;font-size:13px">${footerLink}</p>` : ""}
             </td>
           </tr>

@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "MLM Marketing",
-    template: "%s | MLM Marketing",
+    default: "Digital Community Magnet",
+    template: "%s | Digital Community Magnet",
   },
   description:
-    "Binary MLM platform: two referral legs per member, network depth up to 33 levels, commissions on levels 1–20. Sign up, build your team, and track deposits and withdrawals.",
+    "Digital Community Magnet — binary referral network, team growth, deposits and withdrawals in one place.",
   icons: {
     icon: [{ url: "/logo.jpeg", type: "image/jpeg" }],
     apple: [{ url: "/logo.jpeg" }],

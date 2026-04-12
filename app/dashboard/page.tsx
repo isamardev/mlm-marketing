@@ -1705,7 +1705,7 @@ export default function UserDashboardPage() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
             <div className="flex min-w-0 items-center">
-              <img src="/logo.jpeg" alt="MLM Marketing" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
+              <img src="/logo.jpeg" alt="Digital Community Magnet" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
             </div>
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">

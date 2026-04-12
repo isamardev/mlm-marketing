@@ -423,7 +423,7 @@ function HomeContent() {
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <div className="flex items-center gap-3">
-                <img src="/logo.jpeg" alt="MLM Marketing" className="h-9 w-auto rounded-md ring-1 ring-ring" />
+                <img src="/logo.jpeg" alt="Digital Community Magnet" className="h-9 w-auto rounded-md ring-1 ring-ring" />
                 <div className="hidden items-center gap-4 lg:flex ml-4">
                   <Link href="/about" className="text-xs font-medium text-subtext transition hover:text-primary">About Us</Link>
                   <Link href="/terms" className="text-xs font-medium text-subtext transition hover:text-primary">Terms</Link>
@@ -733,7 +733,7 @@ function HomeContent() {
       <footer className="mx-auto max-w-7xl px-6 pb-12">
         <div className="flex flex-col items-center justify-between gap-6 rounded-3xl bg-muted p-8 text-sm text-subtext ring-1 ring-ring sm:flex-row">
           <div className="flex flex-col items-center gap-2 sm:items-start">
-            <div className="text-lg font-bold text-foreground">MLM Marketing</div>
+            <div className="text-lg font-bold text-foreground">Digital Community Magnet</div>
             <div>© {new Date().getFullYear()} All rights reserved</div>
           </div>
           
