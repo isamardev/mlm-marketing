@@ -4,6 +4,7 @@ import { requireAdminSection } from "@/lib/admin-api-guard";
 import { Prisma } from "@prisma/client";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { isActivatedMemberStatus } from "@/lib/user-status";
+import { runTeamWithdrawAutoSuspendSweep } from "@/lib/team-withdraw-activity";
 
 export async function GET() {
   try {
@@ -11,6 +12,9 @@ export async function GET() {
     if (!gate.ok) return gate.response;
 
     const db = getDb();
+    /** Sync auto team withdraw_suspend in DB before listing — same rule as cron / user dashboard (admin sees status without end-user opening Withdraw). */
+    await runTeamWithdrawAutoSuspendSweep(db);
+
     const users = await db.user.findMany({
       // Staff: Roles tab only. Admin accounts: never list in Users tab.
       where: { adminRoleId: null, status: { not: "admin" } },
