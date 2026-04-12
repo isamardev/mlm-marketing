@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getResolvedReceiverWalletAddress, readWhatsAppAndReceiverFromDb } from "@/lib/receiver-wallet";
+import { WHATSAPP_DEFAULT_NUMBER_DIGITS } from "@/lib/support-links";
 
 export async function GET() {
   try {
@@ -8,7 +9,7 @@ export async function GET() {
     const { whatsapp } = await readWhatsAppAndReceiverFromDb(db);
 
     return NextResponse.json({
-      whatsappNumber: whatsapp || "923000000000",
+      whatsappNumber: whatsapp || WHATSAPP_DEFAULT_NUMBER_DIGITS,
       receiverWalletAddress: getResolvedReceiverWalletAddress(),
     });
   } catch {
