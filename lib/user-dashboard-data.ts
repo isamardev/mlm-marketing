@@ -7,6 +7,11 @@ import {
   mergeWithdrawHistoryLists,
   sumWithdrawToUsdtInternal,
 } from "@/lib/user-withdraw-history";
+import {
+  applyAutoWithdrawSuspendIfStaleForUser,
+  secondsRemainingInTeamActivityWindow,
+  TEAM_INACTIVITY_MINUTES,
+} from "@/lib/team-withdraw-activity";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -27,8 +32,12 @@ export type UserDashboardPayload = {
     permanentWithdrawAddress: string | null;
     securityCode: string | null;
     withdrawSuspendSource: string | null;
-    /** ISO timestamp — activity window for 10-day team withdraw rule resets from this moment. */
+    /** ISO timestamp — team withdraw activity window resets from this moment. */
     lastDownlineActivityAt: string | null;
+    /** Inactivity minutes before auto withdraw_suspend (server rule). */
+    teamWithdrawInactivityMinutes: number;
+    /** Countdown for active members; null if not applicable (e.g. admin). */
+    secondsUntilTeamWithdrawAutoSuspend: number | null;
   };
   directReferrals: number;
   currentLevel: number;
@@ -55,6 +64,8 @@ export async function getUserDashboardPayload(
   const now = new Date();
   const nowMs = now.getTime();
 
+  await applyAutoWithdrawSuspendIfStaleForUser(db, userId);
+
   const user = await db.user.findUnique({
     where: { id: userId },
     select: {
@@ -68,6 +79,7 @@ export async function getUserDashboardPayload(
       status: true,
       createdAt: true,
       referredById: true,
+      adminRoleId: true,
       withdrawSuspendSource: true,
       lastDownlineActivityAt: true,
       withdrawBalance: true,
@@ -88,8 +100,23 @@ export async function getUserDashboardPayload(
 
   const hasSecurityCode = !!user.securityCode;
 
+  let secondsUntilTeamWithdrawAutoSuspend: number | null = null;
+  if (
+    user.status === "active" &&
+    user.adminRoleId == null &&
+    user.lastDownlineActivityAt
+  ) {
+    secondsUntilTeamWithdrawAutoSuspend = secondsRemainingInTeamActivityWindow(
+      user.lastDownlineActivityAt,
+      now,
+    );
+  }
+
+  const { adminRoleId: _adminRoleId, ...userRest } = user;
+  void _adminRoleId;
+
   const maskedProfile = {
-    ...user,
+    ...userRest,
     withdrawBalance,
     usdtBalance,
     permanentWithdrawAddress,
@@ -98,6 +125,8 @@ export async function getUserDashboardPayload(
     lastDownlineActivityAt: user.lastDownlineActivityAt
       ? user.lastDownlineActivityAt.toISOString()
       : null,
+    teamWithdrawInactivityMinutes: TEAM_INACTIVITY_MINUTES,
+    secondsUntilTeamWithdrawAutoSuspend,
   };
 
   let referralGate: UserDashboardPayload["referralGate"] = null;

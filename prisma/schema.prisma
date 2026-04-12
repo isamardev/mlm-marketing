@@ -39,7 +39,7 @@ model User {
   emailVerifiedAt    DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
-  // Last team signup activity (10 upline ancestors refreshed on each new registration).
+  // Last team activation activity (all upline ancestors refreshed on each new activation).
   lastDownlineActivityAt DateTime   @default(now())
   // manual | auto_team_inactivity | null
   withdrawSuspendSource  String?

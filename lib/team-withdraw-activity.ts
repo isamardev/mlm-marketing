@@ -1,8 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import type { getDb } from "@/lib/db";
 
-/** How many upline ancestors get activity + optional auto-restore on each new registration. */
-export const TEAM_UPLINE_STEPS = 10;
+/**
+ * Safety cap when walking the referral chain upward (each user has at most one sponsor).
+ * Replaces the old fixed "10 levels" limit so deep trees still refresh every ancestor.
+ */
+export const TEAM_UPLINE_MAX_DEPTH = 2048;
 /**
  * Inactivity window before auto `withdraw_suspend` (team / downline activity).
  * TEMP: 10 minutes for testing — set back to 10 days when requested (use days in cutoff below).
@@ -18,6 +21,16 @@ function inactivityCutoff(): Date {
   const d = new Date();
   d.setMinutes(d.getMinutes() - TEAM_INACTIVITY_MINUTES);
   return d;
+}
+
+/** Seconds until `lastDownlineActivityAt + inactivity window` (0 = overdue). */
+export function secondsRemainingInTeamActivityWindow(
+  lastDownlineActivityAt: Date,
+  now: Date = new Date(),
+): number {
+  const end = new Date(lastDownlineActivityAt);
+  end.setMinutes(end.getMinutes() + TEAM_INACTIVITY_MINUTES);
+  return Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
 }
 
 type DbLike = {
@@ -36,8 +49,9 @@ type DbLike = {
 };
 
 /**
- * Call when a member activates (not on signup alone). Walks up to 10 sponsors: refreshes
- * `lastDownlineActivityAt` and restores `withdraw_suspend` only when `withdrawSuspendSource` was auto_team_inactivity.
+ * Call when a member activates (not on signup alone). Walks **all** upline sponsors (up to
+ * {@link TEAM_UPLINE_MAX_DEPTH}): refreshes `lastDownlineActivityAt` and restores
+ * `withdraw_suspend` only when `withdrawSuspendSource` was auto_team_inactivity.
  */
 export async function onNewMemberRegistered(
   db: DbLike,
@@ -52,7 +66,7 @@ export async function onNewMemberRegistered(
   const now = new Date();
   let currentId: string | null = u.referredById;
 
-  for (let depth = 0; depth < TEAM_UPLINE_STEPS && currentId; depth++) {
+  for (let depth = 0; depth < TEAM_UPLINE_MAX_DEPTH && currentId; depth++) {
     const parent = await db.user.findUnique({
       where: { id: currentId },
       select: { id: true, referredById: true, status: true, withdrawSuspendSource: true },
