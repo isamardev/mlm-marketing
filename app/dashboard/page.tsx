@@ -231,12 +231,6 @@ function hasSavedBep20WithdrawAddress(profile: any): boolean {
   return BEP20_ADDRESS_RE.test(a);
 }
 
-function formatTeamWithdrawCountdown(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 function WithdrawSection({
   profile,
   onGoToWithdrawAddressSettings,
@@ -248,16 +242,11 @@ function WithdrawSection({
   const [withdrawAddress, setWithdrawAddress] = useState<string>(profile?.permanentWithdrawAddress || "");
   const [securityCode, setSecurityCode] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
-  const [teamWithdrawTick, setTeamWithdrawTick] = useState<number>(() =>
-    typeof profile?.secondsUntilTeamWithdrawAutoSuspend === "number"
-      ? profile.secondsUntilTeamWithdrawAutoSuspend
-      : 0,
-  );
 
   const withdrawSuspended = profile?.status === "withdraw_suspend";
   const withdrawAutoTeamSuspend = profile?.withdrawSuspendSource === "auto_team_inactivity";
   const withdrawUnlocked = hasSavedBep20WithdrawAddress(profile);
-  const teamInactivityMin = Number(profile?.teamWithdrawInactivityMinutes ?? 10);
+  const teamInactivityDays = Number(profile?.teamWithdrawInactivityDays ?? 10);
 
   const withdrawGrossPreview = useMemo(() => {
     const n = Number(withdrawAmount);
@@ -270,31 +259,6 @@ function WithdrawSection({
       setWithdrawAddress(profile.permanentWithdrawAddress);
     }
   }, [profile?.permanentWithdrawAddress]);
-
-  useEffect(() => {
-    if (typeof profile?.secondsUntilTeamWithdrawAutoSuspend === "number") {
-      setTeamWithdrawTick(profile.secondsUntilTeamWithdrawAutoSuspend);
-    }
-  }, [profile?.secondsUntilTeamWithdrawAutoSuspend, profile?.lastDownlineActivityAt]);
-
-  useEffect(() => {
-    if (withdrawSuspended) return;
-    if (typeof profile?.secondsUntilTeamWithdrawAutoSuspend !== "number") return;
-    const id = window.setInterval(() => {
-      setTeamWithdrawTick((prev) => {
-        const next = Math.max(0, prev - 1);
-        if (prev > 0 && next === 0) {
-          try {
-            window.dispatchEvent(new Event("deposit:updated"));
-          } catch {
-            /* ignore */
-          }
-        }
-        return next;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [withdrawSuspended, profile?.secondsUntilTeamWithdrawAutoSuspend]);
 
   const onWithdraw = async () => {
     if (withdrawSuspended || !withdrawUnlocked) return;
@@ -363,7 +327,7 @@ function WithdrawSection({
             <div className="font-semibold text-amber-700 dark:text-amber-400">Withdrawal locked</div>
             <p className="mt-2 text-xs text-subtext">
               {withdrawAutoTeamSuspend
-                ? `No downline activation in your team within the last ${teamInactivityMin} minutes. When anyone in your network completes account activation, your full upline unlocks automatically for another ${teamInactivityMin}-minute window.`
+                ? `No downline activation in your team within the last ${teamInactivityDays} days. When anyone in your network completes account activation, your full upline unlocks automatically for another ${teamInactivityDays}-day window.`
                 : "Your withdrawal is suspended. Please contact customer support."}
             </p>
             <p className="mt-2 text-xs text-subtext">
@@ -394,16 +358,6 @@ function WithdrawSection({
         </>
       ) : (
         <>
-          {typeof profile?.secondsUntilTeamWithdrawAutoSuspend === "number" ? (
-            <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-xs leading-relaxed text-foreground">
-              <div className="font-semibold text-amber-800 dark:text-amber-300">
-                Team activity timer · {formatTeamWithdrawCountdown(teamWithdrawTick)}
-              </div>
-              <p className="mt-1 text-subtext">
-                If no one in your downline completes activation within this window, withdrawals lock until the next activation (same {teamInactivityMin}-minute rule for your full upline).
-              </p>
-            </div>
-          ) : null}
           <div className="mt-1 text-xs text-subtext">
             Security code, locked BEP20 address, {WITHDRAW_FEE_PERCENT}% fee. Your request stays pending until an admin approves (payout tx hash) or rejects (funds return to your withdraw wallet).
           </div>
@@ -1751,7 +1705,7 @@ export default function UserDashboardPage() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
             <div className="flex min-w-0 items-center">
-              <img src="/logo.svg" alt="Logo" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
+              <img src="/logo.jpeg" alt="MLM Marketing" className="h-6 w-auto rounded-md ring-1 ring-ring sm:h-7" />
             </div>
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
@@ -2570,7 +2524,7 @@ export default function UserDashboardPage() {
                     <div className="font-semibold text-amber-700 dark:text-amber-400">Transfer from withdraw wallet locked</div>
                     <p className="mt-2 text-xs text-subtext">
                       {profile?.withdrawSuspendSource === "auto_team_inactivity"
-                        ? "No downline activation in the last 10 minutes. Add a team member who completes activation — withdrawals unlock automatically."
+                        ? `No downline activation in the last ${Number(profile?.teamWithdrawInactivityDays ?? 10)} days. Add a team member who completes activation — withdrawals unlock automatically.`
                         : "Your withdrawal is suspended. Please contact customer support."}
                     </p>
                   </div>

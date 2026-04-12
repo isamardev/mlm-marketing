@@ -9,6 +9,8 @@ import { markSessionTabActive } from "@/lib/session-tab";
 import { getAuthRedirectUrl } from "@/lib/auth-redirect-url";
 
 const BLOCKED_MESSAGE = "You are blocked by admin. Contact customer support for help.";
+/** Hero headline / brand line */
+const BRAND_SLOGAN = "Connecting and Growing Together";
 const COUNTRIES = [
   { name: "Afghanistan", code: "+93" },
   { name: "Albania", code: "+355" },
@@ -259,18 +261,51 @@ function HomeContent() {
   const maxColsByBreakpoint = vw >= 1536 ? 10 : vw >= 1280 ? 8 : vw >= 1024 ? 6 : vw >= 768 ? 4 : vw >= 640 ? 3 : 2;
   const gridColsResponsive = Math.min(maxColsByBreakpoint, Math.max(2, Math.floor(Math.sqrt(visibleNodes))));
   const testimonialsData = [
-    { initials: "AK", name: "Ali Khan", city: "Karachi", text: "The UI is simple and fast. The binary preview explains growth clearly." },
-    { initials: "MS", name: "Mehak Shah", city: "Lahore", text: "Light theme is readable. Forms are clean and minimal." },
-    { initials: "HF", name: "Haris Farooq", city: "Islamabad", text: "Responsive grid looks great; smooth on mobile too." },
+    {
+      initials: "AK",
+      name: "Ali Khan",
+      city: "Karachi",
+      text: "The level explorer made it easy to show new partners how the binary legs fill and why we focus on two strong directs.",
+    },
+    {
+      initials: "MS",
+      name: "Mehak Shah",
+      city: "Lahore",
+      text: "Signup with a referrer code was smooth. I can see my place in the plan and track activity from the member dashboard.",
+    },
+    {
+      initials: "HF",
+      name: "Haris Farooq",
+      city: "Islamabad",
+      text: "Deposits and withdrawals are clear. Having commission depth spelled out upfront avoids confusion with my downline.",
+    },
   ];
   const [tIndex, setTIndex] = useState(0);
   const faqsData = [
-    { q: "What is a binary structure?", a: "Each user adds two members. Levels grow like: L0=1, L1=3, L2=7, and so on." },
-    { q: "How many levels are supported?", a: "The UI preview supports up to 33 levels." },
-    { q: "Do payouts cover all 33 levels?", a: "No. Payouts are limited to the first 20 levels. Levels beyond 20 are visual only." },
-    { q: "How do I create an account?", a: "Use the Login/Sign Up button; submit the form to start the flow." },
-    { q: "Are real payouts implemented?", a: "This is a UI preview; payouts/APIs can be connected next." },
-    { q: "How does it look on mobile?", a: "Responsive grid adapts; fewer columns show on smaller screens." },
+    {
+      q: "What is a binary MLM structure?",
+      a: "Each member may place up to two people on their front line (left and right). Downline levels grow under those legs; the tree can be viewed many levels deep depending on platform settings.",
+    },
+    {
+      q: "How many levels appear in the app?",
+      a: "The network tree can display up to 33 levels so you can understand depth and placement. What counts for bonuses follows the official compensation rules in your back office.",
+    },
+    {
+      q: "Which levels pay commissions?",
+      a: "Commission-eligible depth is capped at the first 20 levels unless the company publishes a different rule. Deeper levels may show for structure only.",
+    },
+    {
+      q: "How do I register?",
+      a: "Use Sign Up with a valid email and, if you were invited, your referrer’s code so you are placed correctly in the binary tree.",
+    },
+    {
+      q: "How do deposits and withdrawals work?",
+      a: "Members fund their wallet and request withdrawals according to the platform’s verification and approval flow. Admins process approved payouts per policy.",
+    },
+    {
+      q: "Can I use this on a phone?",
+      a: "Yes. The member and admin experiences are responsive so you can review your team and account on mobile browsers.",
+    },
   ];
   const [showPassword, setShowPassword] = useState(false);
   const [openFaqs, setOpenFaqs] = useState<number[]>([]);
@@ -388,7 +423,7 @@ function HomeContent() {
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
               <div className="flex items-center gap-3">
-                <img src="/logo.svg" alt="Logo" className="h-9 w-auto rounded-md ring-1 ring-ring" />
+                <img src="/logo.jpeg" alt="MLM Marketing" className="h-9 w-auto rounded-md ring-1 ring-ring" />
                 <div className="hidden items-center gap-4 lg:flex ml-4">
                   <Link href="/about" className="text-xs font-medium text-subtext transition hover:text-primary">About Us</Link>
                   <Link href="/terms" className="text-xs font-medium text-subtext transition hover:text-primary">Terms</Link>
@@ -396,7 +431,7 @@ function HomeContent() {
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 ring-1 ring-ring backdrop-blur sm:flex">
                 <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(0,201,255,0.35)]" />
-                <span className="text-[10px] sm:text-xs tracking-wide text-accent">Connecting People & Ideas</span>
+                <span className="text-[10px] sm:text-xs tracking-wide text-accent">Live</span>
               </div>
             </div>
             <div className="flex items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
@@ -440,10 +475,10 @@ function HomeContent() {
           <div className="mt-10 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
             <div>
               <h1 className="max-w-4xl text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-                Clean, modern MLM landing with Electric Orange accents.
+                {BRAND_SLOGAN}
               </h1>
               <p className="mt-4 max-w-2xl text-pretty text-subtext">
-                Each user can invite two members. The binary structure visualizes up to 33 levels; payouts are limited to the first 20 levels.
+                Sponsor up to two members on your front line. Your organisation can run 33 levels deep in the tree; commission-eligible depth follows platform rules—typically the first 20 levels.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <a className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-white shadow-sm ring-1 ring-primary/20 transition hover:bg-primary/90" href="#levels">
@@ -467,32 +502,34 @@ function HomeContent() {
                   <div className="mt-2 text-2xl font-semibold">1 → 2</div>
                 </div>
                 <div className="rounded-2xl bg-card p-4 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-                  <div className="text-xs text-subtext">Mode</div>
-                  <div className="mt-2 text-2xl font-semibold">UI Only</div>
+                  <div className="text-xs text-subtext">Plan type</div>
+                  <div className="mt-2 text-2xl font-semibold">Binary</div>
                 </div>
               </div>
             </div>
             <div className="rounded-3xl bg-card p-6 shadow-[0_0_15px_rgba(1,163,151,0.15)] ring-1 ring-ring transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,163,151,0.25)]">
-              <div className="text-sm text-subtext">Today’s Snapshot</div>
-              <div className="mt-2 text-2xl font-semibold">Binary Growth Preview</div>
+              <div className="text-sm text-subtext">Plan snapshot</div>
+              <div className="mt-2 text-2xl font-semibold">Binary network limits</div>
               <div className="mt-6 grid gap-4">
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Direct Invites</span>
+                  <span className="text-sm text-subtext">Direct slots (per member)</span>
                   <span className="text-lg font-semibold text-foreground">2</span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Max Depth</span>
-                  <span className="text-lg font-semibold text-foreground">33 Levels</span>
+                  <span className="text-sm text-subtext">Tree depth (visible)</span>
+                  <span className="text-lg font-semibold text-foreground">Up to 33</span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                  <span className="text-sm text-subtext">Primary Tone</span>
-                  <span className="text-lg font-semibold text-foreground">Teal</span>
+                  <span className="text-sm text-subtext">Commission depth</span>
+                  <span className="text-lg font-semibold text-foreground">Levels 1–20</span>
                 </div>
               </div>
               <div className="mt-6 rounded-2xl bg-muted p-4 ring-1 ring-ring">
-                <div className="text-xs uppercase text-subtext">Theme</div>
-                <div className="mt-2 text-2xl font-semibold">Blackberry Contrast</div>
-                <div className="mt-3 text-sm text-subtext">Sharp, modern, fintech-grade surfaces.</div>
+                <div className="text-xs uppercase text-subtext">Payout window</div>
+                <div className="mt-2 text-2xl font-semibold">First 20 levels</div>
+                <div className="mt-3 text-sm text-subtext">
+                  Volume and bonuses follow the compensation plan; deeper levels in the tree are for structure and reporting where enabled.
+                </div>
               </div>
             </div>
           </div>
@@ -503,8 +540,8 @@ function HomeContent() {
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Level Explorer</h2>
-              <p className="mt-1 text-sm text-subtext">Binary growth preview.</p>
+              <h2 className="text-2xl font-semibold">Level explorer</h2>
+              <p className="mt-1 text-sm text-subtext">See how many nodes appear at each binary level before you invite your team.</p>
             </div>
             <div className="flex w-full max-w-md items-center gap-4">
               <input
@@ -573,19 +610,22 @@ function HomeContent() {
 
       <section id="how-it-works" className="mx-auto max-w-7xl px-4 pb-24 sm:px-6">
         <div className="rounded-3xl bg-muted p-6 ring-1 ring-ring sm:p-8">
-          <h2 className="text-2xl font-semibold">How It Works</h2>
+          <h2 className="text-2xl font-semibold">How it works</h2>
+          <p className="mt-2 max-w-3xl text-sm text-subtext">
+            Three steps to participate in this binary MLM programme: get placed, fund your wallet if required, and build two strong legs.
+          </p>
           <div className="mt-6 grid gap-6 sm:grid-cols-3">
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Binary Join</div>
-              <div className="mt-1 text-lg">Each user invites two members</div>
+              <div className="text-sm text-subtext">1 · Join &amp; placement</div>
+              <div className="mt-1 text-lg">Sign up with a referrer code so you are added left or right in their binary tree.</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Levels</div>
-              <div className="mt-1 text-lg">Structure expands up to 33 levels</div>
+              <div className="text-sm text-subtext">2 · Network depth</div>
+              <div className="mt-1 text-lg">Your organisation can grow many levels deep; bonuses typically follow levels 1–20.</div>
             </div>
             <div className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-ring">
-              <div className="text-sm text-subtext">Accounts</div>
-              <div className="mt-1 text-lg">Create your account via Login / Sign Up</div>
+              <div className="text-sm text-subtext">3 · Wallet &amp; payouts</div>
+              <div className="mt-1 text-lg">Deposit, track commissions, and withdraw according to verification and admin approval.</div>
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">

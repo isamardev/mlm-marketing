@@ -929,7 +929,7 @@ export function AdminPanelClient() {
               {sidebarCollapsed ? "›" : "‹"}
             </button>
               <div className="flex min-w-0 items-center gap-3">
-                <img src="/logo.svg" alt="Logo" className="h-8 w-auto rounded-md ring-1 ring-ring" />
+                <img src="/logo.jpeg" alt="MLM Marketing" className="h-8 w-auto rounded-md ring-1 ring-ring" />
               </div>
           </div>
           <div className="relative flex min-w-0 items-center gap-2" ref={adminMenuRef}>
@@ -1107,16 +1107,17 @@ export function AdminPanelClient() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="text-sm text-subtext">Overview</div>
-                      <div className="mt-1 text-2xl font-semibold">System snapshot</div>
-                      <div className="mt-2 max-w-2xl text-sm text-subtext">
-                        Live admin APIs enabled: stats, settings, users, and deposits.
+                      <div className="mt-1 text-2xl font-semibold">Dashboard</div>
+                      <p className="mt-2 max-w-2xl text-sm text-subtext">
+                        Live snapshot of members, balances, and platform totals.
                         {stats?.statsDay?.label ? (
-                          <span className="mt-1 block text-xs">
-                            “Today” for commission totals: {stats.statsDay.label}
+                          <span className="text-xs">
+                            {" "}
+                            Today’s commissions use calendar day {stats.statsDay.label}
                             {stats.statsDay.timeZone ? ` (${stats.statsDay.timeZone})` : ""}.
                           </span>
                         ) : null}
-                      </div>
+                      </p>
                     </div>
                   </div>
                   <div className="mt-6 space-y-6">

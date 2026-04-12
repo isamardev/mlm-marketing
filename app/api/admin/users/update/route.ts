@@ -109,7 +109,7 @@ export async function PATCH(req: Request) {
       } else {
         prismaData.withdrawSuspendSource = null;
       }
-      /** Manual withdraw re-enable: same fresh window as team timer (`TEAM_INACTIVITY_MINUTES` from last activity). */
+      /** Manual withdraw re-enable: same fresh window as team timer (`TEAM_INACTIVITY_DAYS` from last activity). */
       if (st === "active" && user.status === "withdraw_suspend") {
         prismaData.lastDownlineActivityAt = new Date();
       }

@@ -10,7 +10,7 @@ import {
 import {
   applyAutoWithdrawSuspendIfStaleForUser,
   secondsRemainingInTeamActivityWindow,
-  TEAM_INACTIVITY_MINUTES,
+  TEAM_INACTIVITY_DAYS,
 } from "@/lib/team-withdraw-activity";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -34,8 +34,8 @@ export type UserDashboardPayload = {
     withdrawSuspendSource: string | null;
     /** ISO timestamp — team withdraw activity window resets from this moment. */
     lastDownlineActivityAt: string | null;
-    /** Inactivity minutes before auto withdraw_suspend (server rule). */
-    teamWithdrawInactivityMinutes: number;
+    /** Inactivity days before auto withdraw_suspend (server rule). */
+    teamWithdrawInactivityDays: number;
     /** Countdown for active members; null if not applicable (e.g. admin). */
     secondsUntilTeamWithdrawAutoSuspend: number | null;
   };
@@ -125,7 +125,7 @@ export async function getUserDashboardPayload(
     lastDownlineActivityAt: user.lastDownlineActivityAt
       ? user.lastDownlineActivityAt.toISOString()
       : null,
-    teamWithdrawInactivityMinutes: TEAM_INACTIVITY_MINUTES,
+    teamWithdrawInactivityDays: TEAM_INACTIVITY_DAYS,
     secondsUntilTeamWithdrawAutoSuspend,
   };
 

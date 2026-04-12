@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     const codeHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await db.otp.create({
+    const otpRow = await db.otp.create({
       data: {
         userId: user?.id ?? null,
         email,
@@ -73,11 +73,17 @@ export async function POST(req: Request) {
       },
     });
 
-    await sendOtpEmail({
-      to: email,
-      otp,
-      purpose: parsed.data.purpose,
-    });
+    try {
+      await sendOtpEmail({
+        to: email,
+        otp,
+        purpose: parsed.data.purpose,
+      });
+    } catch (sendErr) {
+      await db.otp.delete({ where: { id: otpRow.id } }).catch(() => undefined);
+      console.error("[request-otp] sendOtpEmail failed:", sendErr);
+      throw sendErr;
+    }
 
     return NextResponse.json({
       success: true,
@@ -85,6 +91,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to request OTP";
+    console.error("[request-otp]", error);
     return NextResponse.json({ error: process.env.NODE_ENV === "production" ? "Failed to request OTP" : message }, { status: 500 });
   }
 }

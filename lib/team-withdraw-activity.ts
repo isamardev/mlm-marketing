@@ -6,21 +6,16 @@ import type { getDb } from "@/lib/db";
  * Replaces the old fixed "10 levels" limit so deep trees still refresh every ancestor.
  */
 export const TEAM_UPLINE_MAX_DEPTH = 2048;
-/**
- * Inactivity window before auto `withdraw_suspend` (team / downline activity).
- * TEMP: 10 minutes for testing — set back to 10 days when requested (use days in cutoff below).
- */
-export const TEAM_INACTIVITY_MINUTES = 10;
-/** Production value to restore: `10` days — replace minutes logic in `inactivityCutoff()` with `setDate`. */
-export const TEAM_INACTIVITY_DAYS_PRODUCTION = 10;
+/** Inactivity window before auto `withdraw_suspend` (no downline activation in this period). */
+export const TEAM_INACTIVITY_DAYS = 10;
+
+const TEAM_INACTIVITY_MS = TEAM_INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
 
 export const AUTO_SUSPEND_SOURCE = "auto_team_inactivity" as const;
 export const MANUAL_SUSPEND_SOURCE = "manual" as const;
 
 function inactivityCutoff(): Date {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - TEAM_INACTIVITY_MINUTES);
-  return d;
+  return new Date(Date.now() - TEAM_INACTIVITY_MS);
 }
 
 /** Seconds until `lastDownlineActivityAt + inactivity window` (0 = overdue). */
@@ -28,8 +23,7 @@ export function secondsRemainingInTeamActivityWindow(
   lastDownlineActivityAt: Date,
   now: Date = new Date(),
 ): number {
-  const end = new Date(lastDownlineActivityAt);
-  end.setMinutes(end.getMinutes() + TEAM_INACTIVITY_MINUTES);
+  const end = new Date(lastDownlineActivityAt.getTime() + TEAM_INACTIVITY_MS);
   return Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
 }
 

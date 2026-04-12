@@ -39,7 +39,10 @@ export default function AdminLoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-transparent">
       <div className="w-full max-w-md p-6">
         <div className="rounded-3xl bg-card p-8 shadow-xl ring-1 ring-ring">
-          <h1 className="text-2xl font-semibold text-center mb-6">Admin Login</h1>
+          <h1 className="text-2xl font-semibold text-center">MLM admin login</h1>
+          <p className="mt-2 mb-6 text-center text-sm text-subtext">
+            Sign in with a staff account to manage members, the binary network, deposits, and withdrawals.
+          </p>
 
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>

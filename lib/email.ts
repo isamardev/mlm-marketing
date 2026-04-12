@@ -28,29 +28,55 @@ function smtpPass() {
   return process.env.EMAIL_SERVER_PASSWORD || process.env.SMTP_PASS || "";
 }
 
+/** If only SMTP_URL is set, derive From address from the URL userinfo. */
+function tryMailFromSmtpUrl(): string {
+  const raw = process.env.SMTP_URL?.trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const user = decodeURIComponent(u.username || "");
+    if (user.includes("@")) return user;
+  } catch {
+    /* ignore malformed URL */
+  }
+  return "";
+}
+
 function mailFrom() {
   return (
     process.env.EMAIL_FROM ||
     process.env.SMTP_FROM ||
     process.env.SMTP_USER ||
-    smtpUser()
+    smtpUser() ||
+    tryMailFromSmtpUrl()
   ).trim();
 }
 
 export function isEmailConfigured() {
-  if (process.env.SMTP_URL) {
+  const from = mailFrom();
+  if (!from) {
+    return false;
+  }
+  if (process.env.SMTP_URL?.trim()) {
     return true;
   }
   const host = smtpHost();
   const pass = smtpPass();
   const user = smtpUser();
-  const from = mailFrom();
-  return Boolean(host && smtpPort() && pass && user && from);
+  return Boolean(host && smtpPort() && pass && user);
+}
+
+function smtpSecure(port: number) {
+  if (process.env.SMTP_SECURE) {
+    return process.env.SMTP_SECURE === "true";
+  }
+  return parseSecure(port);
 }
 
 function getTransporter() {
-  if (process.env.SMTP_URL) {
-    return nodemailer.createTransport(process.env.SMTP_URL);
+  const smtpUrl = process.env.SMTP_URL?.trim();
+  if (smtpUrl) {
+    return nodemailer.createTransport(smtpUrl);
   }
 
   const host = smtpHost();
@@ -62,24 +88,41 @@ function getTransporter() {
     throw new Error("Email service is not configured");
   }
 
+  const secure = smtpSecure(port);
   return nodemailer.createTransport({
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 50,
     host,
     port,
-    secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : parseSecure(port),
+    secure,
     auth: {
       user,
       pass,
     },
+    pool: false,
+    connectionTimeout: 60_000,
+    greetingTimeout: 30_000,
+    socketTimeout: 60_000,
+    requireTLS: !secure && port === 587,
+    tls: {
+      minVersion: "TLSv1.2" as const,
+      rejectUnauthorized: process.env.SMTP_TLS_INSECURE === "true" ? false : true,
+    },
   });
 }
 
-function getPurposeLabel(purpose: OtpPurpose) {
-  if (purpose === "registration") return "account registration";
-  if (purpose === "password_reset") return "password reset";
-  return "verification";
+/** Phrase after "so you can complete …" (matches transactional email style). */
+function getCompletionTail(purpose: OtpPurpose) {
+  if (purpose === "registration") return "your account registration";
+  if (purpose === "password_reset") return "your password reset";
+  return "your withdrawal verification";
+}
+
+function emailBrandName() {
+  return process.env.EMAIL_BRAND_NAME?.trim() || "MLM Marketing";
+}
+
+function publicSiteUrl() {
+  const u = (process.env.AUTH_URL || process.env.NEXTAUTH_URL || "").trim();
+  return u.replace(/\/$/, "");
 }
 
 export async function sendOtpEmail({
@@ -98,20 +141,68 @@ export async function sendOtpEmail({
   }
 
   const transporter = getTransporter();
-  const purposeLabel = getPurposeLabel(purpose);
+  const completionTail = getCompletionTail(purpose);
+  const brand = emailBrandName();
+  const site = publicSiteUrl();
+  const subject = `[${brand}] Verification Code`;
+
+  const bodyIntro = `This e-mail contains your verification code, so you can complete ${completionTail}.`;
+  const bodyExpire = "This code will expire in 10 minutes.";
+  const bodyContact =
+    "Contact us immediately if you did not authorize this verification code.";
+
+  const text = [
+    "Hello,",
+    "",
+    bodyIntro,
+    "",
+    `Code : ${otp}`,
+    "",
+    bodyExpire,
+    "",
+    bodyContact,
+    "",
+    brand,
+    site || undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const footerLink =
+    site.length > 0
+      ? `<a href="${site}" style="color:#1a73e8;text-decoration:underline">${site}</a>`
+      : "";
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f1f3f4;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f3f4;padding:24px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;padding:24px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.55;color:#202124;">
+          <tr>
+            <td style="padding:0;">
+              <p style="margin:0 0 16px">Hello,</p>
+              <p style="margin:0 0 16px">${bodyIntro}</p>
+              <p style="margin:0 0 16px"><strong>Code : ${otp}</strong></p>
+              <p style="margin:0 0 16px">${bodyExpire}</p>
+              <p style="margin:0">${bodyContact}</p>
+              <p style="margin:24px 0 0;font-size:13px;color:#5f6368">${brand}</p>
+              ${footerLink ? `<p style="margin:8px 0 0;font-size:13px">${footerLink}</p>` : ""}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
   await transporter.sendMail({
     from,
     to,
-    subject: `Your OTP code for ${purposeLabel}`,
-    text: `Your OTP code is ${otp}. This code will expire in 10 minutes.`,
-    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
-      <h2 style="margin:0 0 16px">OTP Verification</h2>
-      <p style="margin:0 0 12px">Use the code below to complete your ${purposeLabel}.</p>
-      <div style="display:inline-block;padding:12px 20px;border-radius:12px;background:#111827;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:4px">
-        ${otp}
-      </div>
-      <p style="margin:16px 0 0">This code will expire in 10 minutes.</p>
-    </div>`,
+    subject,
+    text,
+    html,
   });
 }
