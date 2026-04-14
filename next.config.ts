@@ -13,6 +13,14 @@ function distDirWindowsTempDevOnly(): string | undefined {
   if (process.env.VERCEL === "1") {
     return undefined;
   }
+  /**
+   * `next build` / `next start` run with `NODE_ENV=production`. A temp `distDir` breaks generated
+   * `types/` + TypeScript (cannot resolve `next/dist/...`). Also ignore if `NEXT_USE_TEMP_DIST=1`
+   * leaked from the dev environment into a production build.
+   */
+  if (process.env.NODE_ENV === "production") {
+    return undefined;
+  }
   if (process.env.NEXT_USE_TEMP_DIST !== "1") {
     return undefined;
   }
@@ -54,13 +62,12 @@ const allowedDevOrigins = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
-  /** Prisma + Neon serverless adapter (ws) — keep external for correct runtime resolution on Vercel. */
-  serverExternalPackages: [
-    "@prisma/client",
-    "@prisma/adapter-neon",
-    "@neondatabase/serverless",
-    "ws",
-  ],
+  /**
+   * Do not list `@prisma/adapter-neon`, `@neondatabase/serverless`, or `ws`: externals bypass
+   * webpack aliases and runtime resolution from a temp `distDir` can fail on Windows.
+   * Bundle real `ws` (direct dependency) so viem/isows and `lib/db.ts` resolve correctly.
+   */
+  serverExternalPackages: ["@prisma/client"],
   ...(distDir ? { distDir } : {}),
   outputFileTracingRoot: projectRoot,
   /** Polling helps file watchers on Windows (slow/locked drives, Defender). */
@@ -95,7 +102,6 @@ const nextConfig: NextConfig = {
         ...config.resolve.alias,
         "@prisma/adapter-neon": stub("prisma-adapter-neon.ts"),
         "@neondatabase/serverless": stub("neondatabase-serverless.ts"),
-        ws: stub("ws.ts"),
       };
     }
     if (!isServer) {

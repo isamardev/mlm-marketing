@@ -16,7 +16,12 @@ function run(title, execPath, args) {
   const r = spawnSync(execPath, args, {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, CI: process.env.CI || "1" },
+    env: {
+      ...process.env,
+      CI: process.env.CI || "1",
+      /** Windows dev may set `NEXT_USE_TEMP_DIST=1` globally — never for `next build` (breaks TS + types). */
+      NEXT_USE_TEMP_DIST: "0",
+    },
   });
   if (r.status !== 0) {
     console.error("\n[build] FAILED at:", title);

@@ -12,6 +12,8 @@ import {
   secondsRemainingInTeamActivityWindow,
   TEAM_INACTIVITY_DAYS,
 } from "@/lib/team-withdraw-activity";
+import { computeBinaryLevelsCompleted } from "@/lib/binary-level-completed";
+import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
 const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -185,6 +187,7 @@ export async function getUserDashboardPayload(
     internalWithdrawToUsdt,
     chainWithdrawalTotal,
     internalTransferTotal,
+    downlineByDepthRows,
   ] = await Promise.all([
     db.user.count({
       where: { referredById: userId, status: { in: ["active", "withdraw_suspend"] } },
@@ -220,15 +223,32 @@ export async function getUserDashboardPayload(
     }),
     approvedWithdrawalSum(),
     sumWithdrawToUsdtInternal(db, userId).catch(() => 0),
+    db.$queryRaw<Array<{ level: number; count: bigint | number }>>(Prisma.sql`
+      WITH RECURSIVE downline AS (
+        SELECT id, "referredById", 1 AS depth
+        FROM "User"
+        WHERE "referredById" = ${userId} AND status <> 'inactive'
+        UNION ALL
+        SELECT u.id, u."referredById", d.depth + 1
+        FROM "User" u
+        JOIN downline d ON u."referredById" = d.id
+        WHERE d.depth < ${TREE_QUERY_MAX_DEPTH} AND u.status <> 'inactive'
+      )
+      SELECT depth AS level, COUNT(*) AS count
+      FROM downline
+      GROUP BY depth
+      ORDER BY depth ASC
+    `),
   ]);
 
   const commissionTotal = Number(commissionAllAgg._sum.amount ?? 0);
   const commissionToday = Number(commissionTodayAgg._sum.amount ?? 0);
 
-  let currentLevel = 0;
-  if (referrals >= 2) {
-    currentLevel = Math.floor(Math.log2(referrals));
+  const levelCounts: Record<string, number> = {};
+  for (const r of downlineByDepthRows) {
+    levelCounts[String(r.level)] = Number(r.count);
   }
+  const currentLevel = computeBinaryLevelsCompleted(levelCounts);
 
   const depositTotal = Number(depAgg._sum.amount ?? 0);
   /** Gross requested for approved on-chain withdrawals + withdraw wallet → USDT internal transfers. */

@@ -4,8 +4,17 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 import { resolveAdminPermissionsForUser } from "@/lib/admin-permissions";
+import { sanitizeAuthOriginUrl } from "@/lib/auth-origin";
 
-const authUrlEnv = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
+const authUrlEnvRaw = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
+/** Ignore `http://0.0.0.0:3000`-style values — they break signOut redirects. */
+const authUrlEnv =
+  authUrlEnvRaw.includes("0.0.0.0") ? "" : sanitizeAuthOriginUrl(authUrlEnvRaw);
+if (authUrlEnvRaw.includes("0.0.0.0")) {
+  console.warn(
+    "[auth] AUTH_URL / NEXTAUTH_URL must not use host 0.0.0.0 (bind-only). Use https://your-live-domain.com or leave unset on Vercel.",
+  );
+}
 if (
   process.env.VERCEL === "1" &&
   authUrlEnv &&
@@ -121,6 +130,62 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    /**
+     * If AUTH_URL / NEXTAUTH_URL still point to localhost on the live host, Auth.js uses that
+     * as `baseUrl` and rejects or replaces a correct `callbackUrl` from `getAuthRedirectUrl`,
+     * sending users to localhost after signOut. Prefer the client-provided https URL when base is local.
+     */
+    redirect({ url, baseUrl: baseUrlIn }) {
+      const baseUrl = sanitizeAuthOriginUrl(baseUrlIn);
+      const nextUrl = url.startsWith("/") ? url : sanitizeAuthOriginUrl(url);
+
+      const vercelHttps = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "")}`
+        : "";
+      const envPublic =
+        authUrlEnv &&
+        !authUrlEnv.includes("localhost") &&
+        !authUrlEnv.includes("127.0.0.1")
+          ? authUrlEnv
+          : vercelHttps || "";
+
+      if (nextUrl.startsWith("/")) {
+        try {
+          const b = new URL(baseUrl);
+          const baseIsLocal = b.hostname === "localhost" || b.hostname === "127.0.0.1";
+          if (baseIsLocal && envPublic) {
+            const origin = new URL(envPublic).origin;
+            return `${origin}${nextUrl}`;
+          }
+        } catch {
+          /* fall through */
+        }
+        return `${baseUrl}${nextUrl}`;
+      }
+
+      try {
+        const target = new URL(nextUrl);
+        const base = new URL(baseUrl);
+        if (target.origin === base.origin) {
+          return nextUrl;
+        }
+        const baseIsLocal = base.hostname === "localhost" || base.hostname === "127.0.0.1";
+        const targetIsLocal = target.hostname === "localhost" || target.hostname === "127.0.0.1";
+        if (envPublic) {
+          try {
+            if (target.origin === new URL(envPublic).origin) return nextUrl;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (baseIsLocal && !targetIsLocal && target.protocol === "https:") {
+          return nextUrl;
+        }
+      } catch {
+        return baseUrl;
+      }
+      return baseUrl;
+    },
     jwt: async ({ token, user }) => {
       if (user) {
         token.userId = user.id;

@@ -11,7 +11,7 @@
     "db:push": "npx prisma db push --skip-generate",
     "db:reset": "prisma migrate reset --force --skip-seed",
     "build": "node scripts/run-build.cjs",
-    "build:next": "node ./node_modules/next/dist/bin/next build --webpack",
+    "build:next": "set NEXT_USE_TEMP_DIST=0&& node ./node_modules/next/dist/bin/next build --webpack",
     "postinstall": "node scripts/prisma-setup.cjs",
     "start": "node ./scripts/start-production.cjs",
     "start:only": "next start",
@@ -39,6 +39,7 @@
     "react-toastify": "^11.0.5",
     "viem": "^2.47.5",
     "wagmi": "^2.19.5",
+    "ws": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
