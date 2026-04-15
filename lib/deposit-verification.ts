@@ -82,9 +82,7 @@ export async function verifyUsdtDepositTransaction(transactionHash: string) {
     );
   }
 
-  if ((receipt.to || "").toLowerCase() !== USDT_BEP20_ADDRESS.toLowerCase()) {
-    throw new DepositVerificationError("INVALID_TX", INVALID_DEPOSIT_TX_MESSAGE);
-  }
+  /** Do not require `receipt.to === USDT`: routers/DEX aggregate USDT transfers in an outer contract call. */
 
   const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
   let matchedLog:
