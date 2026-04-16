@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { auth } from "@/auth";
 import { getDb } from "@/lib/db";
 import { verifyImpersonationToken } from "@/lib/impersonation-token";
+import { findCompanyRootUser, getConfiguredAdminEmail } from "@/lib/company-admin";
 
 const schema = z.object({
   email: z.string().email().optional(),
@@ -88,8 +89,8 @@ export async function POST(req: Request) {
       const reg = pendingUser;
 
       const userCount = await db.user.count();
-      const COMPANY_ADMIN_EMAIL = "admin@example.com";
-      const isFirstAdmin = userCount === 0 && email === COMPANY_ADMIN_EMAIL;
+      const configuredAdminEmail = getConfiguredAdminEmail();
+      const isFirstAdmin = userCount === 0 && email === configuredAdminEmail;
 
       const walletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       async function allocateRefCode(): Promise<string> {
@@ -117,7 +118,11 @@ export async function POST(req: Request) {
             phone: reg.phone,
             walletAddress: walletPlaceholder,
             referrerCode: finalRefCode,
-            referredById: reg.referredById ?? (isFirstAdmin ? null : (await tx.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } }))?.id ?? null),
+            referredById: reg.referredById
+              ? reg.referredById
+              : isFirstAdmin
+                ? null
+                : (await findCompanyRootUser(tx))?.id ?? null,
             balance: 0,
             status: isFirstAdmin ? "admin" : "inactive",
             emailVerifiedAt: new Date(),

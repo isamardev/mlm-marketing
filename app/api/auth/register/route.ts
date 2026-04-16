@@ -3,6 +3,15 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
 import { sendRegistrationOtp } from "@/lib/registration-otp";
+import {
+  COMPANY_REF_CODE,
+  findCompanyRootUser,
+  getConfiguredAdminEmail,
+} from "@/lib/company-admin";
+import {
+  childMetReferralWindowVerification,
+  isUserVerifiedAsReferrer,
+} from "@/lib/referral-signup-eligibility";
 
 const registerSchema = z.object({
   fullName: z.string().min(2).max(60),
@@ -13,9 +22,6 @@ const registerSchema = z.object({
   referrerCode: z.string().min(4).max(30).optional(),
   acceptedTerms: z.literal(true),
 });
-
-const COMPANY_REF_CODE = "ADMIN111";
-const COMPANY_ADMIN_EMAIL = "admin@example.com";
 
 function generateRefCode(name: string) {
   const clean = name.replace(/\s+/g, "").toUpperCase().slice(0, 4) || "USER";
@@ -76,18 +82,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Phone number already used in another pending registration" }, { status: 409 });
     }
 
+    const configuredAdminEmail = getConfiguredAdminEmail();
     const userCount = await db.user.count();
-    let allowBootstrap = userCount === 0 && normalizedEmail === COMPANY_ADMIN_EMAIL;
-    if (userCount === 0 && normalizedEmail !== COMPANY_ADMIN_EMAIL) {
-      const existingAdmin = await db.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true } });
-      if (!existingAdmin) {
+    let allowBootstrap = userCount === 0 && normalizedEmail === configuredAdminEmail;
+    if (userCount === 0 && normalizedEmail !== configuredAdminEmail) {
+      const existingRoot = await findCompanyRootUser(db);
+      if (!existingRoot) {
         const adminPasswordHash = await bcrypt.hash("admin123", 12);
         const adminWalletPlaceholder = `placeholder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.user.create({
           data: {
             username: "Admin",
             country: "Pakistan",
-            email: COMPANY_ADMIN_EMAIL,
+            email: configuredAdminEmail,
             passwordHash: adminPasswordHash,
             walletAddress: adminWalletPlaceholder,
             referrerCode: COMPANY_REF_CODE,
@@ -108,9 +115,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid referrerCode" }, { status: 400 });
     }
 
-    const company = !allowBootstrap
-      ? await db.user.findUnique({ where: { email: COMPANY_ADMIN_EMAIL }, select: { id: true, status: true } })
-      : null;
+    const company = !allowBootstrap ? await findCompanyRootUser(db) : null;
     const parent = allowBootstrap ? null : parentByRef ?? company;
     if (!allowBootstrap && !parent) {
       return NextResponse.json({ error: "Company referrer not found" }, { status: 500 });
@@ -118,10 +123,7 @@ export async function POST(req: Request) {
 
     const REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000;
     if (!allowBootstrap && parentByRef && parentByRef.status !== "admin") {
-      const parentVerified = await db.deposit.findFirst({
-        where: { userId: parentByRef.id, status: "confirmed" },
-        select: { id: true },
-      });
+      const parentVerified = await isUserVerifiedAsReferrer(db, parentByRef.id, parentByRef.status);
       if (!parentVerified) {
         return NextResponse.json({ error: "Referrer not verified yet" }, { status: 400 });
       }
@@ -136,10 +138,7 @@ export async function POST(req: Request) {
       for (const child of direct) {
         if (child.status === "inactive") continue;
         const expiresAt = new Date(child.createdAt.getTime() + REFERRAL_WINDOW_MS);
-        const verified = await db.deposit.findFirst({
-          where: { userId: child.id, status: "confirmed", createdAt: { lte: expiresAt } },
-          select: { id: true },
-        });
+        const verified = await childMetReferralWindowVerification(db, child.id, expiresAt);
         if (verified) {
           inUse += 1;
           continue;

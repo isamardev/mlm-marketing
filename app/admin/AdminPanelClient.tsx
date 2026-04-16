@@ -463,7 +463,7 @@ export function AdminPanelClient() {
   const [editStaffNewPassword, setEditStaffNewPassword] = useState("");
   const [showEditStaffPassword, setShowEditStaffPassword] = useState(false);
   const [showEditUserNewPassword, setShowEditUserNewPassword] = useState(false);
-  const [editUserAccountStatus, setEditUserAccountStatus] = useState<"active" | "blocked">("active");
+  const [editUserAccountStatus, setEditUserAccountStatus] = useState<"active" | "inactive" | "blocked">("active");
   const [editUserWithdrawalAccess, setEditUserWithdrawalAccess] = useState<"active" | "suspend">("active");
   const [adminRolesForSelect, setAdminRolesForSelect] = useState<{ id: string; name: string }[]>([]);
 
@@ -1291,7 +1291,14 @@ export function AdminPanelClient() {
                             <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => setEditingUser(u)}
+                                onClick={() => {
+                                  const st = String(u?.status ?? "");
+                                  setEditingUser(u);
+                                  if (st === "blocked") setEditUserAccountStatus("blocked");
+                                  else if (st === "inactive") setEditUserAccountStatus("inactive");
+                                  else setEditUserAccountStatus("active");
+                                  setEditUserWithdrawalAccess(st === "withdraw_suspend" ? "suspend" : "active");
+                                }}
                                 title="Edit User"
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600 ring-1 ring-blue-600/20 hover:bg-blue-600 hover:text-white transition"
                               >
@@ -2572,6 +2579,8 @@ export function AdminPanelClient() {
                   data.status = "admin";
                 } else if (editUserAccountStatus === "blocked") {
                   data.status = "blocked";
+                } else if (editUserAccountStatus === "inactive") {
+                  data.status = "inactive";
                 } else {
                   data.status = editUserWithdrawalAccess === "suspend" ? "withdraw_suspend" : "active";
                 }
@@ -2741,10 +2750,13 @@ export function AdminPanelClient() {
                       <span className="text-xs font-medium text-subtext">Status</span>
                       <select
                         value={editUserAccountStatus}
-                        onChange={(e) => setEditUserAccountStatus(e.target.value as "active" | "blocked")}
+                        onChange={(e) =>
+                          setEditUserAccountStatus(e.target.value as "active" | "inactive" | "blocked")
+                        }
                         className="mt-1 block w-full rounded-2xl bg-background px-4 py-2 text-sm text-foreground ring-1 ring-ring focus:ring-2 focus:ring-primary/30 outline-none"
                       >
                         <option value="active">Active</option>
+                        <option value="inactive">Inactive (not activated)</option>
                         <option value="blocked">Blocked</option>
                       </select>
                       {editingUser.status === "inactive" ? (

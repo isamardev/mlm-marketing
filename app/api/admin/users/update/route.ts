@@ -82,15 +82,23 @@ export async function PATCH(req: Request) {
       }
       prismaData.username = u;
     }
+    let emailChanging = false;
+    let phoneChanging = false;
     if (email !== undefined && email !== null) {
       const em = String(email).trim().toLowerCase();
       if (!em.length || !em.includes("@")) {
         return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
       }
+      emailChanging = em !== user.email;
       prismaData.email = em;
     }
     if (phone !== undefined && phone !== null) {
-      prismaData.phone = String(phone);
+      const ph = String(phone);
+      phoneChanging = ph !== (user.phone ?? "");
+      prismaData.phone = ph;
+    }
+    if ((emailChanging || phoneChanging) && user.emailVerifiedAt) {
+      prismaData.emailVerifiedAt = user.emailVerifiedAt;
     }
     if (country !== undefined && country !== null) {
       prismaData.country = String(country);

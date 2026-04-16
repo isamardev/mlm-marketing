@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getUserApiContext } from "@/lib/user-api-auth";
 
-const COMPANY_ADMIN_EMAIL = "admin@example.com";
-
 export async function GET(req: Request) {
   try {
     const ctx = await getUserApiContext(req);
@@ -18,16 +16,10 @@ export async function GET(req: Request) {
     const db = getDb();
     const userId = ctx.userId;
 
-    const [me, companyAdmin] = await Promise.all([
-      db.user.findUnique({
-        where: { id: userId },
-        select: { id: true, username: true, email: true, walletAddress: true, referrerCode: true, referredById: true, status: true },
-      }),
-      db.user.findUnique({
-        where: { email: COMPANY_ADMIN_EMAIL },
-        select: { id: true, username: true, email: true, walletAddress: true, referrerCode: true, referredById: true, status: true },
-      }),
-    ]);
+    const me = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, email: true, walletAddress: true, referrerCode: true, referredById: true, status: true },
+    });
 
     if (!me) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

@@ -4,8 +4,6 @@ import { Prisma } from "@prisma/client";
 import { getUserApiContext } from "@/lib/user-api-auth";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 
-const COMPANY_ADMIN_EMAIL = "admin@example.com";
-
 export async function GET(req: Request) {
   try {
     const ctx = await getUserApiContext(req);
@@ -27,11 +25,6 @@ export async function GET(req: Request) {
     if (!me) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-
-    const companyAdmin = await db.user.findUnique({
-      where: { email: COMPANY_ADMIN_EMAIL },
-      select: { id: true, username: true, email: true, walletAddress: true, referrerCode: true, referredById: true, status: true },
-    });
 
     const descendants = await db.$queryRaw<
       Array<{
