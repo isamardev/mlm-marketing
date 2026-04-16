@@ -8,7 +8,12 @@ import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
 import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
 
 const MIN_REAL_DEPOSIT_USDT = 10;
+/** Max age of the on-chain transaction (from block time) for accepting a deposit TX ID. */
+const DEPOSIT_TX_MAX_AGE_SEC = 24 * 60 * 60;
+
 export const INVALID_DEPOSIT_TX_MESSAGE = "Please enter valid TX ID.";
+/** Shown when the transfer is older than {@link DEPOSIT_TX_MAX_AGE_SEC} when the user submits the hash. */
+export const DEPOSIT_TX_EXPIRED_MESSAGE = "Your transaction has expired.";
 
 /** Shown when BSC RPC has no receipt (wrong chain, wrong hash, or not confirmed yet). */
 export const TX_NOT_FOUND_ON_BSC_MESSAGE = "Transaction not found";
@@ -28,10 +33,26 @@ type DbTx = Parameters<Parameters<ReturnType<typeof getDb>["$transaction"]>[0]>[
 
 export class DepositVerificationError extends Error {
   constructor(
-    public readonly code: "INVALID_TX" | "DUPLICATE_TX" | "RECEIVER_NOT_CONFIGURED",
+    public readonly code: "INVALID_TX" | "DUPLICATE_TX" | "RECEIVER_NOT_CONFIGURED" | "TX_EXPIRED",
     message: string,
   ) {
     super(message);
+  }
+}
+
+type BlockTimestampClient = {
+  getBlock: (args: { blockNumber: bigint }) => Promise<{ timestamp: bigint }>;
+};
+
+export async function assertBscDepositBlockNotExpired(client: BlockTimestampClient, blockNumber: bigint) {
+  const block = await client.getBlock({ blockNumber });
+  const txSec = Number(block.timestamp);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(txSec)) {
+    throw new DepositVerificationError("INVALID_TX", INVALID_DEPOSIT_TX_MESSAGE);
+  }
+  if (nowSec - txSec > DEPOSIT_TX_MAX_AGE_SEC) {
+    throw new DepositVerificationError("TX_EXPIRED", DEPOSIT_TX_EXPIRED_MESSAGE);
   }
 }
 
@@ -81,6 +102,8 @@ export async function verifyUsdtDepositTransaction(transactionHash: string) {
       !receipt ? TX_NOT_FOUND_ON_BSC_MESSAGE : INVALID_DEPOSIT_TX_MESSAGE,
     );
   }
+
+  await assertBscDepositBlockNotExpired(client, receipt.blockNumber);
 
   /** Do not require `receipt.to === USDT`: routers/DEX aggregate USDT transfers in an outer contract call. */
 

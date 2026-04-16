@@ -5,7 +5,11 @@ import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
 import { getDb } from "@/lib/db";
 import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
 import { formatUnits } from "viem";
-import { DepositVerificationError, finalizeVerifiedDeposit } from "@/lib/deposit-verification";
+import {
+  assertBscDepositBlockNotExpired,
+  DepositVerificationError,
+  finalizeVerifiedDeposit,
+} from "@/lib/deposit-verification";
 
 export async function GET(req: Request) {
   try {
@@ -89,7 +93,11 @@ export async function GET(req: Request) {
       });
       if (!user) continue;
 
+      const blockNum = lg.blockNumber;
+      if (blockNum == null) continue;
+
       try {
+        await assertBscDepositBlockNotExpired(client, blockNum);
         await finalizeVerifiedDeposit({
           userId: user.id,
           txHash,
@@ -101,7 +109,10 @@ export async function GET(req: Request) {
           createdForUser += 1;
         }
       } catch (error) {
-        if (error instanceof DepositVerificationError && error.code === "DUPLICATE_TX") {
+        if (
+          error instanceof DepositVerificationError &&
+          (error.code === "DUPLICATE_TX" || error.code === "TX_EXPIRED")
+        ) {
           continue;
         }
         throw error;

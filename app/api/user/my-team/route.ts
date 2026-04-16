@@ -61,15 +61,28 @@ export async function GET(req: Request) {
         FROM "Deposit"
         WHERE status = 'confirmed'
         GROUP BY "userId"
+      ),
+      first_activations AS (
+        SELECT "userId", MIN("createdAt") AS "firstActivationAt"
+        FROM "Transaction"
+        WHERE type = 'activation'
+        GROUP BY "userId"
       )
       SELECT
         t.id, t.username, t.email, t."walletAddress", t."referrerCode", t."referredById", t."createdAt", t.depth,
         CASE
-          WHEN fd."firstDepositAt" IS NOT NULL AND fd."firstDepositAt" <= t."createdAt" + interval '24 hours' THEN 1
+          WHEN (
+            fd."firstDepositAt" IS NOT NULL
+            AND fd."firstDepositAt" <= t."createdAt" + interval '24 hours'
+          ) OR (
+            fa."firstActivationAt" IS NOT NULL
+            AND fa."firstActivationAt" <= t."createdAt" + interval '24 hours'
+          ) THEN 1
           ELSE 0
         END AS verified
       FROM team t
       LEFT JOIN first_deposits fd ON fd."userId" = t.id
+      LEFT JOIN first_activations fa ON fa."userId" = t.id
       ORDER BY t.depth ASC
     `);
 
