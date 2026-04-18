@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import crypto from "crypto";
 import { getDb } from "@/lib/db";
+import { MIN_DEPOSIT_USDT } from "@/lib/wallet-limits";
 
 export async function POST(req) {
   try {
@@ -15,8 +16,8 @@ export async function POST(req) {
     if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
-    if (amount < 10) {
-      return NextResponse.json({ error: "Minimum deposit is 10" }, { status: 400 });
+    if (amount < MIN_DEPOSIT_USDT) {
+      return NextResponse.json({ error: `Minimum deposit is ${MIN_DEPOSIT_USDT}` }, { status: 400 });
     }
 
     const apiKey = process.env.CRYPTOMUS_API_KEY || "";

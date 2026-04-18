@@ -6,8 +6,7 @@ import { INTERACTIVE_TX_OPTIONS, runFixedPayoutEngineWithTx } from "@/lib/mlm-lo
 import { isActivatedMemberStatus } from "@/lib/user-status";
 import { getNormalizedReceiverWalletAddress } from "@/lib/receiver-wallet";
 import { USDT_BEP20_ADDRESS } from "@/lib/web3Actions";
-
-const MIN_REAL_DEPOSIT_USDT = 10;
+import { MIN_DEPOSIT_USDT } from "@/lib/wallet-limits";
 /** Max age of the on-chain transaction (from block time) for accepting a deposit TX ID. */
 const DEPOSIT_TX_MAX_AGE_SEC = 24 * 60 * 60;
 
@@ -161,7 +160,7 @@ export async function verifyUsdtDepositTransaction(transactionHash: string) {
 
   const amountRaw = Number(formatUnits(matchedLog.value, decimals));
   const amount = Number(amountRaw.toFixed(2));
-  if (!Number.isFinite(amount) || amount < MIN_REAL_DEPOSIT_USDT) {
+  if (!Number.isFinite(amount) || amount < MIN_DEPOSIT_USDT) {
     throw new DepositVerificationError("INVALID_TX", INVALID_DEPOSIT_TX_MESSAGE);
   }
 

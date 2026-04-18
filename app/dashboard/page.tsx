@@ -7,7 +7,12 @@ import { toast } from "react-toastify";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { WHATSAPP_CHANNEL_URL } from "@/lib/support-links";
 import { DEFAULT_RECEIVER_WALLET_ADDRESS, RECEIVER_WALLET_NETWORK, RECEIVER_WALLET_TOKEN } from "@/lib/receiver-wallet";
-import { MIN_WITHDRAW_OR_P2P_USDT, WITHDRAW_FEE_PERCENT, withdrawNetAfterFee } from "@/lib/wallet-limits";
+import {
+  MIN_DEPOSIT_USDT,
+  MIN_WITHDRAW_OR_P2P_USDT,
+  WITHDRAW_FEE_PERCENT,
+  withdrawNetAfterFee,
+} from "@/lib/wallet-limits";
 import { TREE_QUERY_MAX_DEPTH } from "@/lib/tree-display";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/session-tab";
 import { isActivatedMemberStatus } from "@/lib/user-status";
@@ -68,7 +73,11 @@ function WalletSection({
                 </select>
               </label>
               <div className="rounded-2xl bg-muted p-3 text-xs text-subtext ring-1 ring-ring">
-                Minimum deposit is <span className="font-semibold text-foreground">10 {RECEIVER_WALLET_TOKEN}</span>. The
+                Minimum deposit is{" "}
+                <span className="font-semibold text-foreground">
+                  {MIN_DEPOSIT_USDT} {RECEIVER_WALLET_TOKEN}
+                </span>
+                . The
                 amount will be read from the blockchain after you submit the TX ID.
               </div>
               <button
@@ -86,7 +95,7 @@ function WalletSection({
           <div className="w-full">
             <div className="text-lg font-semibold">Payment Details</div>
             <div className="mt-1 text-xs text-subtext leading-relaxed">
-              Minimum <span className="font-semibold text-foreground">$10 USDT</span>. Complete your transfer within{" "}
+              Minimum <span className="font-semibold text-foreground">${MIN_DEPOSIT_USDT} USDT</span>. Complete your transfer within{" "}
               <span className="font-semibold text-foreground">24 hours</span> from any exchange or wallet to the BEP20 (BSC)
               address below. A valid <span className="font-semibold text-foreground">transaction ID (TX ID)</span> must be
               submitted — without it we cannot verify your payment and{" "}

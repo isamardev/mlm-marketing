@@ -100,6 +100,34 @@ function main() {
     copyMergeFileByFile(src, dest);
   }
 
+  /** Ensure Prisma browser shim exists — webpack may resolve it even for server-only apps. */
+  const critical = ["index-browser.js", "default.js", "index.js"];
+  let fixed = 0;
+  for (const name of critical) {
+    const d = path.join(dest, name);
+    const s = path.join(src, name);
+    if (!fs.existsSync(d) && fs.existsSync(s)) {
+      try {
+        fs.copyFileSync(s, d);
+        fixed += 1;
+      } catch (e) {
+        console.error("[copy-prisma-client] failed to restore", name, e && e.message ? e.message : e);
+        process.exit(1);
+      }
+    }
+    if (!fs.existsSync(d)) {
+      console.error(
+        "[copy-prisma-client] missing required file after copy:",
+        name,
+        "— run prisma generate, close processes locking node_modules/.prisma, retry.",
+      );
+      process.exit(1);
+    }
+  }
+  if (fixed > 0) {
+    console.log("[copy-prisma-client] restored", fixed, "missing file(s) into", dest);
+  }
+
   console.log("copy-prisma-client: copied to", dest);
 }
 

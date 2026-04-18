@@ -1,3 +1,6 @@
+/** Minimum USDT for on-chain deposit verification (BEP20 TX hash flow). */
+export const MIN_DEPOSIT_USDT = 1;
+
 /** Minimum USDT amount for withdrawal requests and P2P transfers. */
 export const MIN_WITHDRAW_OR_P2P_USDT = 3;
 

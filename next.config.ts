@@ -105,8 +105,14 @@ const nextConfig: NextConfig = {
       };
     }
     if (!isServer) {
+      /**
+       * Prisma resolves `index-browser.js` → `.prisma/client/index-browser.js`. If postinstall
+       * copy was incomplete (Windows EPERM), the file is missing and webpack ENOENTs. Never bundle
+       * real Prisma in the browser.
+       */
       config.resolve.alias = {
         ...config.resolve.alias,
+        "@prisma/client": path.join(projectRoot, "lib", "stubs", "prisma-client-browser.js"),
         "@react-native-async-storage/async-storage": false,
         "pino-pretty": false,
       };
